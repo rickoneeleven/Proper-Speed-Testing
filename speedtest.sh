@@ -236,8 +236,12 @@ while [ $i -gt 0 ]; do
             wgetrunning="$(pgrep $killprocess)"
         done
         
-        # Use maximum speed instead of average for better representation
-        final_speed=$max_mbps
+        # Use average speed for more accurate representation
+        if [ $count -gt 0 ]; then
+            final_speed=$((total_mbps / count))
+        else
+            final_speed=0
+        fi
         
         # Store maximum speed to temp files for JSON output
         if [ "$1" = "download" ]; then

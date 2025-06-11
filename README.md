@@ -4,13 +4,13 @@ A reliable, automated internet speed testing system that runs daily speed tests 
 
 ## Features
 
-- **Automated Daily Testing**: Runs once per day at a random time
+- **Automated Testing**: Daily or hourly testing at random times
 - **Accurate Measurements**: Realistic download/upload speed detection with warmup periods
 - **Web Dashboard**: Real-time results with statistics, detailed diagnostics, and history
 - **Endpoint Testing**: Tests 6 download sources and 2 FTP upload servers with speed measurement
 - **Network Diagnostics**: Traceroute data and connection status for all endpoints
 - **Data Management**: Auto-truncating files prevent disk space issues
-- **Multiple Modes**: Manual, automated, and continuous testing options
+- **Multiple Modes**: Manual, automated, continuous, and hourly testing options
 - **Lightweight**: Compatible with basic shell environments (firewalls, routers)
 
 ## Quick Setup
@@ -45,19 +45,26 @@ apk add net-tools curl
 
 ### 3. Setup Automated Testing
 
-Add the cron job for automated daily testing:
+Add the cron job for automated testing:
 
 ```bash
 # Edit your crontab
 crontab -e
 
-# Add this line (replace /full/path/to with your actual path):
+# For DAILY testing at random times (default):
 * * * * * /full/path/to/speedtest.sh --cron-check
+
+# For HOURLY testing at random times:
+* * * * * /full/path/to/speedtest.sh --cron-check --hourly
 ```
 
 **Example:**
 ```bash
+# Daily testing
 * * * * * /home/user/Proper-Speed-Testing/speedtest.sh --cron-check
+
+# Hourly testing
+* * * * * /home/user/Proper-Speed-Testing/speedtest.sh --cron-check --hourly
 ```
 
 ### 4. Verify Setup
@@ -157,15 +164,24 @@ ifconfig
 
 ### Customizing Test Schedule
 
-By default, tests run once daily at a random time. To modify:
+Tests can run either daily or hourly at random times:
 
 ```bash
+# Switch to hourly testing
+crontab -e
+# Change: * * * * * /path/to/speedtest.sh --cron-check
+# To:     * * * * * /path/to/speedtest.sh --cron-check --hourly
+
 # Force next test to run in 5 minutes
 echo $(($(date +%s) + 300)) > .next_run_time
 
 # Remove scheduling file to reset
 rm .next_run_time
 ```
+
+**Testing Modes:**
+- **Daily (default)**: Random time each day (0:00-23:59)
+- **Hourly**: Random minute each hour (0-59)
 
 ## Troubleshooting
 
@@ -246,6 +262,7 @@ The system automatically manages file sizes:
 **Current Version: Production Ready ✅**
 
 Recent improvements:
+- **Hourly testing mode**: New --hourly option for more frequent monitoring
 - **Fixed upload speed measurement**: Now uses average speeds with warmup periods instead of burst speeds
 - **Enhanced endpoint testing**: Real-time speed capture for all download and upload endpoints
 - **Improved web dashboard**: Shows actual transfer speeds, file sizes, and detailed diagnostics

@@ -9,6 +9,12 @@ if [ "$1" = "--cron-check" ]; then
     SCRIPT_DIR=$(dirname "$0")
     cd "$SCRIPT_DIR"
     
+    # Check if hourly mode is enabled
+    hourly_mode=0
+    if [ "$2" = "--hourly" ]; then
+        hourly_mode=1
+    fi
+    
     # Check cron debug file size and truncate if over 1MB (1048576 bytes)
     if [ -f "cron-debug.log" ]; then
         debug_size=$(stat -c%s "cron-debug.log" 2>/dev/null || echo 0)
@@ -19,7 +25,11 @@ if [ "$1" = "--cron-check" ]; then
     fi
     
     # Debug logging
-    echo "[$(date)] Cron-check started from directory: $(pwd)" >> cron-debug.log
+    if [ $hourly_mode -eq 1 ]; then
+        echo "[$(date)] Cron-check started (HOURLY MODE) from directory: $(pwd)" >> cron-debug.log
+    else
+        echo "[$(date)] Cron-check started from directory: $(pwd)" >> cron-debug.log
+    fi
     
     # Read next run time from file
     if [ -f ".next_run_time" ] && [ -s ".next_run_time" ]; then
@@ -28,13 +38,22 @@ if [ "$1" = "--cron-check" ]; then
         echo "[$(date)] Found next_run_time: $next_run ($(date -d @$next_run)), current: $current_time" >> cron-debug.log
         
         if [ "$next_run" ] && [ $current_time -ge $next_run ]; then
-            # Time to run! Calculate next run time (random time tomorrow)
-            # Generate random seconds (0-86399 for 00:00:00 to 23:59:59)
-            # Using awk for better portability than $RANDOM
-            random_seconds=$(awk 'BEGIN{srand(); print int(rand()*86400)}')
-            # Calculate tomorrow's timestamp and add random seconds
-            tomorrow_midnight=$(date -d "tomorrow 00:00:00" +%s)
-            next_run_time=$((tomorrow_midnight + random_seconds))
+            # Time to run! Calculate next run time
+            if [ $hourly_mode -eq 1 ]; then
+                # Hourly mode: random time within next hour
+                # Generate random seconds (0-3599 for 0-59 minutes)
+                random_seconds=$(awk 'BEGIN{srand(); print int(rand()*3600)}')
+                # Calculate next hour's timestamp and add random seconds
+                next_hour=$(date -d "+1 hour" +%s)
+                next_run_time=$((next_hour - $(date +%s) % 3600 + random_seconds))
+            else
+                # Daily mode: random time tomorrow
+                # Generate random seconds (0-86399 for 00:00:00 to 23:59:59)
+                random_seconds=$(awk 'BEGIN{srand(); print int(rand()*86400)}')
+                # Calculate tomorrow's timestamp and add random seconds
+                tomorrow_midnight=$(date -d "tomorrow 00:00:00" +%s)
+                next_run_time=$((tomorrow_midnight + random_seconds))
+            fi
             echo $next_run_time > .next_run_time
             
             # Get the default interface
@@ -51,12 +70,21 @@ if [ "$1" = "--cron-check" ]; then
             echo "[$(date)] Not time yet. Next run at $next_run, current is $current_time" >> cron-debug.log
         fi
     else
-        # First run - set random time for tomorrow
-        random_seconds=$(awk 'BEGIN{srand(); print int(rand()*86400)}')
-        tomorrow_midnight=$(date -d "tomorrow 00:00:00" +%s)
-        next_run_time=$((tomorrow_midnight + random_seconds))
+        # First run - set random time
+        if [ $hourly_mode -eq 1 ]; then
+            # Hourly mode: random time within next hour
+            random_seconds=$(awk 'BEGIN{srand(); print int(rand()*3600)}')
+            next_hour=$(date -d "+1 hour" +%s)
+            next_run_time=$((next_hour - $(date +%s) % 3600 + random_seconds))
+            echo "First run scheduled for: $(date -d @$next_run_time) (HOURLY MODE)" >> speedtest.log
+        else
+            # Daily mode: random time tomorrow
+            random_seconds=$(awk 'BEGIN{srand(); print int(rand()*86400)}')
+            tomorrow_midnight=$(date -d "tomorrow 00:00:00" +%s)
+            next_run_time=$((tomorrow_midnight + random_seconds))
+            echo "First run scheduled for: $(date -d @$next_run_time)" >> speedtest.log
+        fi
         echo $next_run_time > .next_run_time
-        echo "First run scheduled for: $(date -d @$next_run_time)" >> speedtest.log
         echo "[$(date)] Created first run time: $next_run_time ($(date -d @$next_run_time))" >> cron-debug.log
     fi
     exit 0
@@ -72,13 +100,14 @@ if [ -z "$1" ]; then
         echo "Please specify interface manually:"
         echo
         echo "Usage: $0 [interface] [cron|--auto-run]"
-        echo "       $0 --cron-check"
+        echo "       $0 --cron-check [--hourly]"
         echo
         echo "Examples:"
         echo "  Auto-detect:    $0"
         echo "  Manual run:     $0 eth0"
         echo "  24-hour mode:   $0 eth0 cron"
-        echo "  Cron checker:   $0 --cron-check"
+        echo "  Cron checker:   $0 --cron-check          (daily random)"
+        echo "  Hourly check:   $0 --cron-check --hourly (hourly random)"
         echo
         echo "Find your interface: ip route | grep default"
         exit 1
@@ -544,12 +573,14 @@ while [ $i -gt 0 ]; do
     write_output upload >> speedtest.log &
     sleep 1
     
-    # FTP uploads using credentials from original script (16 second timeout like original)
-    curl -T upload_test.bin ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/ --max-time 16 2>/dev/null &
-    curl -T upload_test.bin ftp://ftp_speedtest:ftp_speedtest@virtueazure.pinescore.com/ --max-time 16 2>/dev/null &
+    # FTP uploads using credentials from original script (no timeout - let write_output control)
+    curl -T upload_test.bin ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/ 2>/dev/null &
+    curl -T upload_test.bin ftp://ftp_speedtest:ftp_speedtest@virtueazure.pinescore.com/ 2>/dev/null &
     
-    # Wait for upload measurement to complete (16+ seconds like original)
-    sleep 18
+    # Wait for write_output to finish (16 seconds) and kill uploads
+    wait $!
+    
+    sleep 2
     
     # Clean up download and upload files
     rm -f iPad_Pro_HFR* > /dev/null 2>&1

@@ -433,18 +433,21 @@ while [ $i -gt 0 ]; do
             status="REACHABLE"
             upload_status="${upload_status}${name}:OK;"
             
-            # For reachable endpoints, test upload speed with a smaller test file
+            # For reachable endpoints, test upload speed with 1GB file for realistic measurement
             if [ $auto_run_mode -eq 0 ]; then
                 echo -n "$name: $status - Testing upload speed... "
             fi
             
-            # Create a 10MB test file if it doesn't exist
-            if [ ! -f /tmp/upload_speed_test.bin ] || [ $(stat -c%s /tmp/upload_speed_test.bin 2>/dev/null || echo 0) -ne 10485760 ]; then
-                dd if=/dev/urandom of=/tmp/upload_speed_test.bin bs=1M count=10 2>/dev/null
+            # Create 1GB upload test file if it doesn't exist (reuse the one from main test)
+            if [ ! -f upload_test.bin ] || [ $(stat -c%s upload_test.bin 2>/dev/null || echo 0) -ne 1073741824 ]; then
+                if [ $auto_run_mode -eq 0 ]; then
+                    echo -n "creating 1GB file... "
+                fi
+                dd if=/dev/urandom of=upload_test.bin bs=1M count=1024 2>/dev/null
             fi
             
-            # Test upload speed (3 second timeout)
-            upload_output=$(curl -T /tmp/upload_speed_test.bin "$url" --max-time 3 2>&1 | tail -5)
+            # Test upload speed (5 second timeout for more realistic measurement)
+            upload_output=$(curl -T upload_test.bin "$url" --max-time 5 2>&1 | tail -5)
             
             # Extract upload speed (support both k and M formats)
             speed_line=$(echo "$upload_output" | grep -E "[0-9.]+[kM]" | tail -1)

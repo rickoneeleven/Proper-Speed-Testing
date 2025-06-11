@@ -610,6 +610,9 @@ while [ $i -gt 0 ]; do
             fi
         done
         
+        # Create data directory if it doesn't exist
+        mkdir -p data
+        
         # Create JSON object with diagnostic data
         json_line="{\"timestamp\":\"$json_timestamp\",\"download_mbps\":$json_download_mbps,\"upload_mbps\":$json_upload_mbps,\"duration\":$json_duration,\"run_type\":\"$run_type\",\"interface\":\"$external_interface\",\"download_status\":\"$download_status\",\"upload_status\":\"$upload_status\",\"traceroute\":\"$traceroute_data\",\"download_details\":\"$download_details\",\"upload_details\":\"$upload_details\"}"
         echo "$json_line" >> data/results.json

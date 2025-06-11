@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proper Speed Testing Results</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            text-align: center;
+            border-left: 4px solid #007bff;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        .chart-container {
+            margin: 30px 0;
+            height: 400px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+        }
+        .results-table {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .speed-download {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .speed-upload {
+            color: #fd7e14;
+            font-weight: bold;
+        }
+        .run-type {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .run-type.auto {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+        .run-type.manual {
+            background: #d4edda;
+            color: #155724;
+        }
+        .run-type.cron {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            background: #e7f3ff;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .refresh-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+        .refresh-btn:hover {
+            background: #0056b3;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-left-color: #dc3545;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Proper Speed Testing Dashboard</h1>
+        
+        <button class="refresh-btn" onclick="loadResults()">🔄 Refresh Data</button>
+        
+        <div class="status" id="status">
+            Loading speed test results...
+        </div>
+        
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalTests">-</div>
+                <div class="stat-label">Total Tests</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgDownload">-</div>
+                <div class="stat-label">Avg Download (Mbps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="avgUpload">-</div>
+                <div class="stat-label">Avg Upload (Mbps)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="lastTest">-</div>
+                <div class="stat-label">Last Test</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="nextTest">-</div>
+                <div class="stat-label">Next Test</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
+            📊 Speed Chart Coming Soon
+        </div>
+        
+        <div class="results-table">
+            <h3>Recent Test Results</h3>
+            <div class="loading" id="loading">Loading...</div>
+            <table id="resultsTable" style="display:none;">
+                <thead>
+                    <tr>
+                        <th>Date & Time</th>
+                        <th>Download Speed</th>
+                        <th>Upload Speed</th>
+                        <th>Duration</th>
+                        <th>Run Type</th>
+                        <th>Interface</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function formatDate(timestamp) {
+            return new Date(timestamp).toLocaleString();
+        }
+        
+        function formatDuration(seconds) {
+            return `${seconds}s`;
+        }
+        
+        function getNextTestTime() {
+            fetch('.next_run_time')
+                .then(response => response.text())
+                .then(timestamp => {
+                    if (timestamp.trim()) {
+                        const nextTime = new Date(parseInt(timestamp.trim()) * 1000);
+                        document.getElementById('nextTest').textContent = nextTime.toLocaleString();
+                    }
+                })
+                .catch(() => {
+                    document.getElementById('nextTest').textContent = 'Unknown';
+                });
+        }
+        
+        function loadResults() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('resultsTable').style.display = 'none';
+            document.getElementById('status').textContent = 'Loading speed test results...';
+            document.getElementById('status').className = 'status';
+            
+            fetch('data/results.json')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('No results file found');
+                    }
+                    return response.text();
+                })
+                .then(data => {
+                    const lines = data.trim().split('\n').filter(line => line.trim());
+                    const results = lines.map(line => {
+                        try {
+                            return JSON.parse(line);
+                        } catch (e) {
+                            return null;
+                        }
+                    }).filter(result => result);
+                    
+                    if (results.length === 0) {
+                        throw new Error('No valid results found');
+                    }
+                    
+                    // Update stats
+                    const totalTests = results.length;
+                    const validDownloads = results.filter(r => r.download_mbps > 0);
+                    const validUploads = results.filter(r => r.upload_mbps > 0);
+                    
+                    const avgDownload = validDownloads.length > 0 ? 
+                        (validDownloads.reduce((sum, r) => sum + r.download_mbps, 0) / validDownloads.length).toFixed(1) : '-';
+                    const avgUpload = validUploads.length > 0 ? 
+                        (validUploads.reduce((sum, r) => sum + r.upload_mbps, 0) / validUploads.length).toFixed(1) : '-';
+                    
+                    const lastTest = results.length > 0 ? formatDate(results[results.length - 1].timestamp) : '-';
+                    
+                    document.getElementById('totalTests').textContent = totalTests;
+                    document.getElementById('avgDownload').textContent = avgDownload;
+                    document.getElementById('avgUpload').textContent = avgUpload;
+                    document.getElementById('lastTest').textContent = lastTest;
+                    
+                    // Populate table
+                    const tbody = document.getElementById('resultsBody');
+                    tbody.innerHTML = '';
+                    
+                    // Show last 50 results, newest first
+                    const recentResults = results.slice(-50).reverse();
+                    
+                    recentResults.forEach(result => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${formatDate(result.timestamp)}</td>
+                            <td class="speed-download">${result.download_mbps || 0} Mbps</td>
+                            <td class="speed-upload">${result.upload_mbps || 0} Mbps</td>
+                            <td>${formatDuration(result.duration)}</td>
+                            <td><span class="run-type ${result.run_type}">${result.run_type}</span></td>
+                            <td>${result.interface}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                    
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('resultsTable').style.display = 'table';
+                    document.getElementById('status').textContent = `Showing ${recentResults.length} most recent tests (of ${totalTests} total)`;
+                    document.getElementById('status').className = 'status';
+                    
+                    // Get next test time
+                    getNextTestTime();
+                })
+                .catch(error => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('status').textContent = `Error: ${error.message}`;
+                    document.getElementById('status').className = 'status error';
+                });
+        }
+        
+        // Load results on page load
+        loadResults();
+        
+        // Auto-refresh every 60 seconds
+        setInterval(loadResults, 60000);
+    </script>
+</body>
+</html>

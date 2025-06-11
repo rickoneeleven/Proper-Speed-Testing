@@ -251,7 +251,7 @@
         }
         
         function getNextTestTime() {
-            fetch('.next_run_time')
+            fetch('.next_run_time?' + Date.now())
                 .then(response => response.text())
                 .then(timestamp => {
                     if (timestamp.trim()) {
@@ -291,7 +291,11 @@
             if (result.download_details) {
                 const downloadDetails = result.download_details.split(';').filter(d => d);
                 downloadDetails.forEach(detail => {
-                    const [name, status, output] = detail.split('|');
+                    const parts = detail.split('|');
+                    const name = parts[0];
+                    const status = parts[1];
+                    // Join all remaining parts as the output (in case there are multiple pipes)
+                    const output = parts.slice(2).join(' | ');
                     if (name && status) {
                         const dot = status === 'VALID' ? '🟢' : '🔴';
                         html += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">`;
@@ -317,7 +321,11 @@
             if (result.upload_details) {
                 const uploadDetails = result.upload_details.split(';').filter(d => d);
                 uploadDetails.forEach(detail => {
-                    const [name, status, output] = detail.split('|');
+                    const parts = detail.split('|');
+                    const name = parts[0];
+                    const status = parts[1];
+                    // Join all remaining parts as the output (in case there are multiple pipes)
+                    const output = parts.slice(2).join(' | ');
                     if (name && status) {
                         const dot = status === 'REACHABLE' ? '🟢' : '🔴';
                         html += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">`;

@@ -5,8 +5,10 @@ A reliable, automated internet speed testing system that runs daily speed tests 
 ## Features
 
 - **Automated Daily Testing**: Runs once per day at a random time
-- **Accurate Measurements**: Realistic download/upload speed detection
-- **Web Dashboard**: Real-time results with statistics and history
+- **Accurate Measurements**: Realistic download/upload speed detection with warmup periods
+- **Web Dashboard**: Real-time results with statistics, detailed diagnostics, and history
+- **Endpoint Testing**: Tests 6 download sources and 2 FTP upload servers with speed measurement
+- **Network Diagnostics**: Traceroute data and connection status for all endpoints
 - **Data Management**: Auto-truncating files prevent disk space issues
 - **Multiple Modes**: Manual, automated, and continuous testing options
 - **Lightweight**: Compatible with basic shell environments (firewalls, routers)
@@ -23,16 +25,23 @@ chmod +x speedtest.sh
 
 ### 2. Install Dependencies
 
-Ubuntu/Debian:
+**Ubuntu/Debian:**
 ```bash
 sudo apt-get update
 sudo apt-get install -y net-tools curl
 ```
 
-CentOS/RHEL:
+**CentOS/RHEL:**
 ```bash
 sudo yum install -y net-tools curl
 ```
+
+**Alpine Linux (routers/firewalls):**
+```bash
+apk add net-tools curl
+```
+
+**Note:** `net-tools` provides the `ifconfig` command required for interface monitoring. Modern systems may use `ip` command, but `ifconfig` is needed for compatibility.
 
 ### 3. Setup Automated Testing
 
@@ -80,14 +89,26 @@ ls -la .next_run_time
 
 ### View Results
 
-Open `index.html` in a web browser or set up a web server:
+**Option 1: Direct File Access**
+Open `index.html` directly in your browser (file:// protocol).
 
+**Option 2: Local Web Server**
 ```bash
 # Simple Python web server (if available)
 python3 -m http.server 8080
 
 # Then visit: http://localhost:8080
 ```
+
+**Option 3: Production Web Server**
+Place files in your web server directory (Apache, Nginx, etc.).
+
+The dashboard shows:
+- Real-time speed statistics and averages
+- Detailed endpoint testing results with actual transfer speeds
+- Network diagnostics including traceroute information
+- Historical data with clickable test details
+- Next scheduled test time
 
 ### Check System Status
 
@@ -179,11 +200,14 @@ chmod 755 speedtest.sh
 
 ```bash
 # Test connectivity to speed test servers
-curl -I https://httpbin.org/get
-curl -I https://postman-echo.com/get
+curl -I https://pinescore.com/111/ns_1GB.zip
+curl -I http://ipv4.download.thinkbroadband.com/1GB.zip
 
-# Check interface exists
+# Check interface exists and has traffic
 ifconfig your_interface_name
+
+# Test FTP connectivity
+curl -I ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/
 ```
 
 ### Debug Mode
@@ -204,6 +228,19 @@ The system automatically manages file sizes:
 - **cron-debug.log**: Truncated at 1MB (keeps last 500 entries)
 - **Temporary files**: Auto-cleaned after each test
 
+## Project Status
+
+**Current Version: Production Ready ✅**
+
+Recent improvements:
+- **Fixed upload speed measurement**: Now uses average speeds with warmup periods instead of burst speeds
+- **Enhanced endpoint testing**: Real-time speed capture for all download and upload endpoints
+- **Improved web dashboard**: Shows actual transfer speeds, file sizes, and detailed diagnostics
+- **Better cache handling**: Frontend now properly refreshes scheduled test times
+- **Accurate speed reporting**: Realistic speeds matching connection capabilities
+
+The system is fully functional and ready for long-term deployment.
+
 ## Advanced Usage
 
 ### Integration with Monitoring
@@ -214,6 +251,9 @@ jq '.download_mbps' data/results.json
 
 # Get average speeds
 jq '[.download_mbps] | add/length' data/results.json
+
+# View latest test with all details
+tail -1 data/results.json | jq '.'
 ```
 
 ### Web Server Setup
@@ -238,11 +278,16 @@ location /speedtest {
 
 ## Requirements
 
-- **OS**: Linux with basic shell support
-- **Dependencies**: `curl`, `ifconfig`, `awk`, `dd`
-- **Network**: Internet access for speed tests
-- **Storage**: ~10MB for long-term data collection
-- **Cron**: For automated scheduling
+- **OS**: Linux with basic shell support (bash/sh)
+- **Dependencies**: 
+  - `curl` (for HTTP/FTP transfers and speed testing)
+  - `net-tools` package (provides `ifconfig` for interface monitoring)
+  - `awk` (for random number generation and text processing)
+  - `dd` (for creating test files)
+  - `traceroute` (optional, for network diagnostics)
+- **Network**: Internet access for speed tests to external servers
+- **Storage**: ~10MB for long-term data collection (auto-managed)
+- **Cron**: For automated scheduling (standard on all Linux systems)
 
 ## Compatibility
 

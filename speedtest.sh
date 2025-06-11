@@ -304,19 +304,27 @@ while [ $i -gt 0 ]; do
             progress_output=$(curl -o /dev/null --max-time 3 "$url" 2>&1 | tail -3)
             
             # Extract meaningful info from progress output
-            # Look for lines with download speed info
-            speed_line=$(echo "$progress_output" | grep -E "[0-9]+k" | tail -1)
+            # Look for lines with download speed info (support both k and M formats)
+            speed_line=$(echo "$progress_output" | grep -E "[0-9.]+[kM]" | tail -1)
             
             if [ -n "$speed_line" ]; then
-                # Extract the download speed (usually in format like "5839k")
-                dl_speed_k=$(echo "$speed_line" | grep -oE "[0-9]+k" | tail -1 | sed 's/k//')
+                # Extract the download speed (supports both "5839k" and "68.1M" formats)
+                dl_speed_k=$(echo "$speed_line" | grep -oE "[0-9.]+k" | tail -1 | sed 's/k//')
+                dl_speed_m=$(echo "$speed_line" | grep -oE "[0-9.]+M" | tail -1 | sed 's/M//')
                 # Extract file size if visible (like "1024M")
                 file_size_m=$(echo "$progress_output" | grep -oE "[0-9]+M" | head -1 | sed 's/M//')
                 
                 if [ -n "$dl_speed_k" ]; then
                     # Convert k/s to Mbit/s (multiply by 8, divide by 1000)
-                    # Using awk for decimal calculation
                     dl_speed_mbit=$(echo "$dl_speed_k" | awk '{printf "%.1f", $1 * 8 / 1000}')
+                elif [ -n "$dl_speed_m" ]; then
+                    # Convert M/s to Mbit/s (multiply by 8)
+                    dl_speed_mbit=$(echo "$dl_speed_m" | awk '{printf "%.1f", $1 * 8}')
+                else
+                    dl_speed_mbit=""
+                fi
+                
+                if [ -n "$dl_speed_mbit" ]; then
                     summary="${curl_header} | Speed: ${dl_speed_mbit} Mbit/s"
                     if [ -n "$file_size_m" ]; then
                         summary="${summary} | File Size: ${file_size_m} MB"
@@ -438,13 +446,23 @@ while [ $i -gt 0 ]; do
             # Test upload speed (3 second timeout)
             upload_output=$(curl -T /tmp/upload_speed_test.bin "$url" --max-time 3 2>&1 | tail -5)
             
-            # Extract upload speed
-            speed_line=$(echo "$upload_output" | grep -E "[0-9]+k" | tail -1)
+            # Extract upload speed (support both k and M formats)
+            speed_line=$(echo "$upload_output" | grep -E "[0-9.]+[kM]" | tail -1)
             if [ -n "$speed_line" ]; then
-                ul_speed_k=$(echo "$speed_line" | grep -oE "[0-9]+k" | tail -1 | sed 's/k//')
+                ul_speed_k=$(echo "$speed_line" | grep -oE "[0-9.]+k" | tail -1 | sed 's/k//')
+                ul_speed_m=$(echo "$speed_line" | grep -oE "[0-9.]+M" | tail -1 | sed 's/M//')
+                
                 if [ -n "$ul_speed_k" ]; then
                     # Convert k/s to Mbit/s
                     ul_speed_mbit=$(echo "$ul_speed_k" | awk '{printf "%.1f", $1 * 8 / 1000}')
+                elif [ -n "$ul_speed_m" ]; then
+                    # Convert M/s to Mbit/s (multiply by 8)
+                    ul_speed_mbit=$(echo "$ul_speed_m" | awk '{printf "%.1f", $1 * 8}')
+                else
+                    ul_speed_mbit=""
+                fi
+                
+                if [ -n "$ul_speed_mbit" ]; then
                     # Don't include the directory listing, just show status and speed
                     summary="FTP Connected | Upload Speed: ${ul_speed_mbit} Mbit/s"
                 else

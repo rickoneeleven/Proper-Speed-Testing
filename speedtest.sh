@@ -96,6 +96,9 @@ json_output=0
 if [ "$2" = "--auto-run" ]; then
     auto_run_mode=1
     json_output=1
+else
+    # Enable JSON output for manual runs too
+    json_output=1
 fi
 
 # Only show tail output if not in auto-run mode
@@ -524,9 +527,13 @@ while [ $i -gt 0 ]; do
     json_end_time=$(date +%s)
     json_duration=$((json_end_time - json_start_time))
     
-    # Write JSON output if in auto-run mode
+    # Write JSON output for all runs
     if [ $json_output -eq 1 ]; then
-        run_type="auto"
+        if [ $auto_run_mode -eq 1 ]; then
+            run_type="auto"
+        else
+            run_type="manual"
+        fi
         if [ "$2" = "cron" ]; then
             run_type="cron"
         fi

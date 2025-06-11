@@ -169,16 +169,22 @@ while [ $i -gt 0 ]; do
             interface="get_ispeed upload"
             killprocess=curl
             wgetrunning="yes"
+            # Add 3-second warmup delay for uploads only
+            warmup_delay=3
         else
             interface=get_ispeed
             killprocess=curl
             wgetrunning="yes"
+            warmup_delay=0
         fi
         
         sleep 1
         
-        # Variables to track max speed for JSON
+        # Variables to track speeds for averaging
         max_mbps=0
+        total_mbps=0
+        count=0
+        measurements_to_skip=$warmup_delay  # Skip initial measurements during warmup
         
         while [ $(date +%s) -lt $endTime ] && [ -f ${temp_file} ] && [ ! -z "$wgetrunning" ]; do
             s1=`$interface`;
@@ -188,25 +194,46 @@ while [ $i -gt 0 ]; do
             d2=$(($d*8));
             mbps=$(($d2 / 1048576))
             
-            # Track max speed
-            if [ $mbps -gt $max_mbps ]; then
-                max_mbps=$mbps
-            fi
-            
-            # Only output to console if not in auto-run mode
-            if [ $auto_run_mode -eq 0 ]; then
-                curl_count=$(pgrep -c curl || echo 0)
-                echo "         $1 $(($d / 1048576)) MB/s (${mbps}Mb/s) [${curl_count} curl procs]   |  $(date)";
+            # Skip measurements during warmup period
+            if [ $measurements_to_skip -gt 0 ]; then
+                measurements_to_skip=$((measurements_to_skip - 1))
+                # Only output to console if not in auto-run mode
+                if [ $auto_run_mode -eq 0 ]; then
+                    curl_count=$(pgrep -c curl || echo 0)
+                    echo "         $1 $(($d / 1048576)) MB/s (${mbps}Mb/s) [${curl_count} curl procs] WARMUP   |  $(date)";
+                fi
+            else
+                # After warmup, track speeds for averaging
+                total_mbps=$((total_mbps + mbps))
+                count=$((count + 1))
+                
+                # Still track max for reference
+                if [ $mbps -gt $max_mbps ]; then
+                    max_mbps=$mbps
+                fi
+                
+                # Only output to console if not in auto-run mode
+                if [ $auto_run_mode -eq 0 ]; then
+                    curl_count=$(pgrep -c curl || echo 0)
+                    echo "         $1 $(($d / 1048576)) MB/s (${mbps}Mb/s) [${curl_count} curl procs]   |  $(date)";
+                fi
             fi
             
             wgetrunning="$(pgrep $killprocess)"
         done
         
-        # Store max speed to temp files for JSON output
-        if [ "$1" = "download" ]; then
-            echo $max_mbps > /tmp/download_speed.tmp
+        # Calculate average speed (avoid division by zero)
+        if [ $count -gt 0 ]; then
+            avg_mbps=$((total_mbps / count))
         else
-            echo $max_mbps > /tmp/upload_speed.tmp
+            avg_mbps=0
+        fi
+        
+        # Store average speed (not max) to temp files for JSON output
+        if [ "$1" = "download" ]; then
+            echo $avg_mbps > /tmp/download_speed.tmp
+        else
+            echo $avg_mbps > /tmp/upload_speed.tmp
         fi
         
         sleep 1

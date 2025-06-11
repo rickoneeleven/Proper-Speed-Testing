@@ -48,13 +48,54 @@
         }
         .chart-container {
             margin: 30px 0;
-            height: 400px;
+            min-height: 200px;
             background: #f8f9fa;
             border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #666;
+            padding: 20px;
+            color: #333;
+        }
+        .chart-container h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .detail-section {
+            margin: 15px 0;
+            padding: 15px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .detail-section h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        .endpoint-status {
+            display: inline-block;
+            padding: 4px 8px;
+            margin: 2px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .endpoint-ok {
+            background: #d4edda;
+            color: #155724;
+        }
+        .endpoint-fail {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .traceroute-info {
+            font-family: monospace;
+            font-size: 0.8em;
+            background: #f1f3f4;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 5px 0;
+            max-height: 100px;
+            overflow-y: auto;
         }
         .results-table {
             overflow-x: auto;
@@ -76,6 +117,11 @@
         }
         tr:hover {
             background-color: #f5f5f5;
+            cursor: pointer;
+        }
+        .selected-row {
+            background-color: #e3f2fd !important;
+            border-left: 4px solid #2196f3;
         }
         .speed-download {
             color: #28a745;
@@ -168,8 +214,11 @@
             </div>
         </div>
         
-        <div class="chart-container">
-            📊 Speed Chart Coming Soon
+        <div class="chart-container" id="detailsContainer">
+            <h3 id="detailsTitle">Latest Test Details</h3>
+            <div id="testDetails">
+                <p>Loading diagnostic information...</p>
+            </div>
         </div>
         
         <div class="results-table">
@@ -213,6 +262,115 @@
                 .catch(() => {
                     document.getElementById('nextTest').textContent = 'Unknown';
                 });
+        }
+        
+        let currentTestData = [];
+        
+        function displayTestDetails(result, isSelected = false) {
+            const detailsDiv = document.getElementById('testDetails');
+            const titleDiv = document.getElementById('detailsTitle');
+            
+            if (!result || !result.download_status) {
+                detailsDiv.innerHTML = '<p>No diagnostic data available yet.</p>';
+                titleDiv.textContent = 'Test Details';
+                return;
+            }
+            
+            // Update title based on whether this is a selected test or latest
+            if (isSelected) {
+                titleDiv.textContent = `Test Details - ${formatDate(result.timestamp)}`;
+            } else {
+                titleDiv.textContent = 'Latest Test Details';
+            }
+            
+            let html = '';
+            
+            // Download endpoints status with detailed output
+            html += '<div class="detail-section">';
+            html += '<h4>📥 Download Endpoints</h4>';
+            if (result.download_details) {
+                const downloadDetails = result.download_details.split(';').filter(d => d);
+                downloadDetails.forEach(detail => {
+                    const [name, status, output] = detail.split('|');
+                    if (name && status) {
+                        const dot = status === 'VALID' ? '🟢' : '🔴';
+                        html += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">`;
+                        html += `<strong>${dot} ${name}</strong><br>`;
+                        html += `<div style="font-family: monospace; font-size: 0.8em; color: #666; margin-top: 5px; word-break: break-all;">${output || 'No output captured'}</div>`;
+                        html += `</div>`;
+                    }
+                });
+            } else {
+                // Fallback to old format if detailed data not available
+                const downloadStatuses = result.download_status.split(';').filter(s => s);
+                downloadStatuses.forEach(status => {
+                    const [name, statusResult] = status.split(':');
+                    const className = statusResult === 'OK' ? 'endpoint-ok' : 'endpoint-fail';
+                    html += `<span class="endpoint-status ${className}">${name}: ${statusResult}</span>`;
+                });
+            }
+            html += '</div>';
+            
+            // Upload endpoints status with detailed output
+            html += '<div class="detail-section">';
+            html += '<h4>📤 Upload Endpoints</h4>';
+            if (result.upload_details) {
+                const uploadDetails = result.upload_details.split(';').filter(d => d);
+                uploadDetails.forEach(detail => {
+                    const [name, status, output] = detail.split('|');
+                    if (name && status) {
+                        const dot = status === 'REACHABLE' ? '🟢' : '🔴';
+                        html += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">`;
+                        html += `<strong>${dot} ${name}</strong><br>`;
+                        html += `<div style="font-family: monospace; font-size: 0.8em; color: #666; margin-top: 5px; word-break: break-all;">${output || 'No output captured'}</div>`;
+                        html += `</div>`;
+                    }
+                });
+            } else {
+                // Fallback to old format if detailed data not available
+                const uploadStatuses = result.upload_status.split(';').filter(s => s);
+                uploadStatuses.forEach(status => {
+                    const [name, statusResult] = status.split(':');
+                    const className = statusResult === 'OK' ? 'endpoint-ok' : 'endpoint-fail';
+                    html += `<span class="endpoint-status ${className}">${name}: ${statusResult}</span>`;
+                });
+            }
+            html += '</div>';
+            
+            // Traceroute information
+            if (result.traceroute) {
+                html += '<div class="detail-section">';
+                html += '<h4>🗺️ Network Paths (First 5 Hops)</h4>';
+                const traces = result.traceroute.split(';').filter(t => t);
+                traces.forEach(trace => {
+                    const [name, path] = trace.split(':');
+                    if (path) {
+                        const hops = path.split('|').filter(hop => hop.trim());
+                        const cleanName = name.replace(/_/g, ' ').replace('upload ', '↑ ');
+                        html += `<div><strong>${cleanName}:</strong></div>`;
+                        html += `<div class="traceroute-info">`;
+                        hops.forEach((hop, index) => {
+                            const cleanHop = hop.trim().replace(/\*/g, '* timeout');
+                            if (cleanHop) {
+                                html += `${index + 1}. ${cleanHop}<br>`;
+                            }
+                        });
+                        html += `</div>`;
+                    }
+                });
+                html += '</div>';
+            }
+            
+            // Test metadata
+            html += '<div class="detail-section">';
+            html += '<h4>ℹ️ Test Information</h4>';
+            html += `<p><strong>Test Time:</strong> ${formatDate(result.timestamp)}</p>`;
+            html += `<p><strong>Duration:</strong> ${result.duration} seconds</p>`;
+            html += `<p><strong>Interface:</strong> ${result.interface}</p>`;
+            html += `<p><strong>Run Type:</strong> ${result.run_type}</p>`;
+            html += '</div>';
+            
+            detailsDiv.innerHTML = html;
         }
         
         function loadResults() {
@@ -266,7 +424,7 @@
                     // Show last 50 results, newest first
                     const recentResults = results.slice(-50).reverse();
                     
-                    recentResults.forEach(result => {
+                    recentResults.forEach((result, index) => {
                         const row = document.createElement('tr');
                         row.innerHTML = `
                             <td>${formatDate(result.timestamp)}</td>
@@ -276,6 +434,21 @@
                             <td><span class="run-type ${result.run_type}">${result.run_type}</span></td>
                             <td>${result.interface}</td>
                         `;
+                        
+                        // Add click handler to show details for this test
+                        row.addEventListener('click', function() {
+                            // Remove previous selection
+                            document.querySelectorAll('tr.selected-row').forEach(r => {
+                                r.classList.remove('selected-row');
+                            });
+                            
+                            // Highlight this row
+                            row.classList.add('selected-row');
+                            
+                            // Show details for this test
+                            displayTestDetails(result, true);
+                        });
+                        
                         tbody.appendChild(row);
                     });
                     
@@ -284,6 +457,11 @@
                     document.getElementById('status').textContent = `Showing ${recentResults.length} most recent tests (of ${totalTests} total)`;
                     document.getElementById('status').className = 'status';
                     
+                    // Display details for latest test
+                    if (results.length > 0) {
+                        displayTestDetails(results[results.length - 1], false);
+                    }
+                    
                     // Get next test time
                     getNextTestTime();
                 })
@@ -291,14 +469,14 @@
                     document.getElementById('loading').style.display = 'none';
                     document.getElementById('status').textContent = `Error: ${error.message}`;
                     document.getElementById('status').className = 'status error';
+                    document.getElementById('testDetails').innerHTML = '<p>No diagnostic data available.</p>';
                 });
         }
         
         // Load results on page load
         loadResults();
         
-        // Auto-refresh every 60 seconds
-        setInterval(loadResults, 60000);
+        // Auto-refresh removed - use manual refresh button to avoid losing selected test details
     </script>
 </body>
 </html>

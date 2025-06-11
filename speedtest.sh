@@ -80,6 +80,18 @@ external_interface=$1
 auto_run_mode=0
 json_output=0
 
+# Check if another speedtest script is already running (exclude current process)
+# Temporarily disabled for testing
+# script_name=$(basename "$0")
+# running_count=$(ps aux | grep "./$script_name" | grep -v grep | grep -v "cron-check" | wc -l)
+# if [ $running_count -gt 1 ]; then
+#     json_timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+#     mkdir -p data
+#     echo "{\"timestamp\":\"$json_timestamp\",\"download_mbps\":0,\"upload_mbps\":0,\"duration\":0,\"run_type\":\"failed\",\"interface\":\"$external_interface\",\"download_status\":\"FAILED: Test already running\",\"upload_status\":\"FAILED: Test already running\",\"traceroute\":\"\",\"download_details\":\"Test|FAILED|Another speedtest is already in progress\",\"upload_details\":\"Test|FAILED|Another speedtest is already in progress\"}" >> data/results.json
+#     echo "ERROR: Another speedtest is already running. Test aborted."
+#     exit 1
+# fi
+
 # Check if we're in auto-run mode (called by cron-check)
 if [ "$2" = "--auto-run" ]; then
     auto_run_mode=1
@@ -222,6 +234,8 @@ while [ $i -gt 0 ]; do
     download_status=""
     upload_status=""
     traceroute_data=""
+    download_details=""
+    upload_details=""
     
     # Test download endpoints and collect diagnostics
     if [ $auto_run_mode -eq 0 ]; then
@@ -231,19 +245,27 @@ while [ $i -gt 0 ]; do
         echo "================================="
     fi
     
-    # Test each endpoint and collect status
+    # Test each endpoint and collect status with detailed output
     test_endpoint() {
         local url="$1"
         local name="$2"
         local host="$3"
         
-        if curl -I -s --connect-timeout 3 "$url" | grep -q "200\|302"; then
+        # Capture curl output and test result
+        curl_output=$(curl -I -s --connect-timeout 3 "$url" 2>&1)
+        curl_exit_code=$?
+        
+        if echo "$curl_output" | grep -q "200\|302"; then
             status="VALID"
             download_status="${download_status}${name}:OK;"
         else
             status="INVALID"
             download_status="${download_status}${name}:FAIL;"
         fi
+        
+        # Store summary for web interface (first 200 chars, safe for JSON)
+        summary=$(echo "$curl_output" | head -1 | cut -c1-200 | tr '"' "'" | tr '\n\r' ' ')
+        download_details="${download_details}${name}|${status}|${summary};"
         
         if [ $auto_run_mode -eq 0 ]; then
             echo "$name: $status"
@@ -310,7 +332,7 @@ while [ $i -gt 0 ]; do
         fi
     }
     
-    # Test FTP endpoints with error reporting
+    # Test FTP endpoints with error reporting and detailed output capture
     test_ftp_endpoint() {
         local url="$1"
         local name="$2"
@@ -340,6 +362,10 @@ while [ $i -gt 0 ]; do
             upload_status="${upload_status}${name}:FAIL(${error_msg});"
         fi
         
+        # Store summary for web interface (first 200 chars, safe for JSON)
+        summary=$(echo "$error_output" | head -1 | cut -c1-200 | tr '"' "'" | tr '\n\r' ' ')
+        upload_details="${upload_details}${name}|${status}|${summary};"
+        
         if [ $auto_run_mode -eq 0 ]; then
             if [ "$status" = "REACHABLE" ]; then
                 echo "$name: $status"
@@ -368,42 +394,28 @@ while [ $i -gt 0 ]; do
     sleep 3
     
     # Create 1GB upload test file for realistic speed measurement (like original script)
-    dd if=/dev/urandom of=upload_test.bin bs=1M count=1024 2>/dev/null
+    # Only create if it doesn't exist or is wrong size to avoid recreating unnecessarily
+    if [ ! -f upload_test.bin ] || [ $(stat -c%s upload_test.bin 2>/dev/null || echo 0) -ne 1073741824 ]; then
+        if [ $auto_run_mode -eq 0 ]; then
+            echo "Creating 1GB upload test file..."
+        fi
+        dd if=/dev/urandom of=upload_test.bin bs=1M count=1024 2>/dev/null
+    else
+        if [ $auto_run_mode -eq 0 ]; then
+            echo "Using existing 1GB upload test file"
+        fi
+    fi
     
-    # Record initial interface bytes before upload
-    initial_bytes=$(get_ispeed upload)
-    start_time=$(date +%s)
+    # Start measurement first, then begin uploads (like original script)
+    write_output upload >> speedtest.log &
+    sleep 1
     
     # FTP uploads using credentials from original script (16 second timeout like original)
     curl -T upload_test.bin ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/ --max-time 16 2>/dev/null &
-    upload_pid1=$!
     curl -T upload_test.bin ftp://ftp_speedtest:ftp_speedtest@virtueazure.pinescore.com/ --max-time 16 2>/dev/null &
-    upload_pid2=$!
     
-    # Monitor upload progress for 16 seconds
-    max_upload_mbps=0
-    for i in $(seq 1 16); do
-        sleep 1
-        current_bytes=$(get_ispeed upload)
-        bytes_diff=$((current_bytes - initial_bytes))
-        elapsed=$(($(date +%s) - start_time))
-        if [ $elapsed -gt 0 ] && [ $bytes_diff -gt 0 ]; then
-            mbps=$((bytes_diff * 8 / elapsed / 1000000))
-            if [ $mbps -gt $max_upload_mbps ]; then
-                max_upload_mbps=$mbps
-            fi
-            if [ $auto_run_mode -eq 0 ]; then
-                echo "         upload $((bytes_diff / elapsed / 1000000)) MB/s (${mbps}Mb/s)   |  $(date)"
-            fi
-        fi
-    done
-    
-    # Wait for uploads to complete
-    wait $upload_pid1 2>/dev/null
-    wait $upload_pid2 2>/dev/null
-    
-    # Store final upload speed
-    echo "$max_upload_mbps" > /tmp/upload_speed.tmp
+    # Wait for upload measurement to complete (16+ seconds like original)
+    sleep 18
     
     # Clean up download and upload files
     rm -f iPad_Pro_HFR* > /dev/null 2>&1
@@ -465,7 +477,7 @@ while [ $i -gt 0 ]; do
         done
         
         # Create JSON object with diagnostic data
-        json_line="{\"timestamp\":\"$json_timestamp\",\"download_mbps\":$json_download_mbps,\"upload_mbps\":$json_upload_mbps,\"duration\":$json_duration,\"run_type\":\"$run_type\",\"interface\":\"$external_interface\",\"download_status\":\"$download_status\",\"upload_status\":\"$upload_status\",\"traceroute\":\"$traceroute_data\"}"
+        json_line="{\"timestamp\":\"$json_timestamp\",\"download_mbps\":$json_download_mbps,\"upload_mbps\":$json_upload_mbps,\"duration\":$json_duration,\"run_type\":\"$run_type\",\"interface\":\"$external_interface\",\"download_status\":\"$download_status\",\"upload_status\":\"$upload_status\",\"traceroute\":\"$traceroute_data\",\"download_details\":\"$download_details\",\"upload_details\":\"$upload_details\"}"
         echo "$json_line" >> data/results.json
         
         # Also log to regular log

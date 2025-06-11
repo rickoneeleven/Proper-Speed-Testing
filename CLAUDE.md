@@ -123,6 +123,34 @@ The system is now fully functional and ready for long-term operation:
   └── CLAUDE.md (this file)
 ```
 
+## CRITICAL RULE: NO MOCK DATA EVER
+**NEVER create, simulate, or mock ANY test data. The user has explicitly forbidden this multiple times. Only work with real test results from actual script execution.**
+
+## OUTSTANDING ISSUES TO FIX
+
+### 1. Upload Speed Measurement Issues
+- Upload speeds being reported as higher than line capacity (33 Mbps upload on lower-tier line)
+- Need to investigate upload measurement accuracy in write_output function
+- May need to adjust upload speed calculation method
+
+### 2. Add Real-Time Speed Indicators
+For both download and upload endpoints, capture actual curl/FTP progress data:
+- curl has --progress-meter and --progress-bar options that show real-time speeds
+- FTP transfers typically show progress with speeds - capture this output
+- Add these speed indicators to the diagnostic output instead of just HTTP headers
+- User wants to see actual transfer speeds during the test, not just final calculated speeds
+- This will provide verification that the reported speeds are accurate
+
+### 3. Current Status
+- ✅ Detailed curl outputs now captured (HTTP headers, status codes)
+- ✅ JSON parsing fixed (removed carriage returns, proper escaping)
+- ✅ Web interface working with real diagnostic data
+- ✅ All 6 download + 2 upload endpoints working
+- ✅ Test completes in ~45 seconds as required
+- ✅ 1GB upload file reuse working
+- ⚠️ Upload speed measurement needs verification
+- ⚠️ Need real-time progress/speed data from curl/FTP commands
+
 ## Testing Notes
 - Script successfully runs with `./speedtest.sh ens18`
 - Download speeds: ~50 Mb/s in test environment

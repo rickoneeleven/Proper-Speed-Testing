@@ -202,15 +202,7 @@ while [ $i -gt 0 ]; do
         sleep 1
     }
 
-    # URL validity checks (only show if not in auto-run mode)
-    if [ $auto_run_mode -eq 0 ]; then
-        echo
-        echo
-        echo "Checking download URLs validity..."
-        echo "================================="
-    fi
-    
-    # Define URLs
+    # Define URLs and test endpoints
     url1="http://updates-http.cdn-apple.com/2018FallFCS/fullrestores/091-62921/11701D1E-AC8E-11E8-A4EB-C9640A3A3D87/iPad_Pro_HFR_12.0_16A366_Restore.ipsw"
     url2="https://pinescore.com/111/ns_1GB.zip"
     url3="https://virtualmin-london.s3.eu-west-2.amazonaws.com/ns_1GB.zipAWS"
@@ -218,29 +210,62 @@ while [ $i -gt 0 ]; do
     url5="http://84.21.152.158/ns_1GB.zipCloudLinux"
     url6="http://virtueazure.pinescore.com/VTL-ST_1GB.zip"
     
+    # Extract hostnames for diagnostics
+    host1="updates-http.cdn-apple.com"
+    host2="pinescore.com"
+    host3="virtualmin-london.s3.eu-west-2.amazonaws.com"
+    host4="ipv4.download.thinkbroadband.com"
+    host5="84.21.152.158"
+    host6="virtueazure.pinescore.com"
+    
+    # Initialize diagnostic data
+    download_status=""
+    upload_status=""
+    traceroute_data=""
+    
+    # Test download endpoints and collect diagnostics
     if [ $auto_run_mode -eq 0 ]; then
-        # Check each URL
-        echo -n "Apple CDN: "
-        if curl -I -s --connect-timeout 3 "$url1" | grep -q "200\|302"; then echo "VALID"; else echo "INVALID/UNREACHABLE"; fi
+        echo
+        echo
+        echo "Checking download URLs validity..."
+        echo "================================="
+    fi
+    
+    # Test each endpoint and collect status
+    test_endpoint() {
+        local url="$1"
+        local name="$2"
+        local host="$3"
         
-        echo -n "Pinescore: "
-        if curl -I -s --connect-timeout 3 "$url2" | grep -q "200\|302"; then echo "VALID"; else echo "INVALID/UNREACHABLE"; fi
+        if curl -I -s --connect-timeout 3 "$url" | grep -q "200\|302"; then
+            status="VALID"
+            download_status="${download_status}${name}:OK;"
+        else
+            status="INVALID"
+            download_status="${download_status}${name}:FAIL;"
+        fi
         
-        echo -n "AWS S3: "
-        if curl -I -s --connect-timeout 3 "$url3" | grep -q "200\|302"; then echo "VALID"; else echo "INVALID/UNREACHABLE"; fi
+        if [ $auto_run_mode -eq 0 ]; then
+            echo "$name: $status"
+        fi
         
-        echo -n "ThinkBroadband: "
-        if curl -I -s --connect-timeout 3 "$url4" | grep -q "200\|302"; then echo "VALID"; else echo "INVALID/UNREACHABLE"; fi
-        
-        echo -n "CloudLinux: "
-        if curl -I -s --connect-timeout 3 "$url5" | grep -q "200\|302"; then echo "VALID"; else echo "INVALID/UNREACHABLE"; fi
-        
-        echo -n "VirtueAzure: "
-        if curl -I -s --connect-timeout 3 "$url6" | grep -q "200\|302"; then echo "VALID"; else echo "INVALID/UNREACHABLE"; fi
-        
+        # Run traceroute in background (limit to 10 hops for speed)
+        if [ "$status" = "VALID" ]; then
+            (traceroute -m 10 -w 1 "$host" 2>/dev/null | tail -n +2 | head -5 > "/tmp/trace_${name}.tmp") &
+        fi
+    }
+    
+    test_endpoint "$url1" "Apple CDN" "$host1"
+    test_endpoint "$url2" "Pinescore" "$host2"
+    test_endpoint "$url3" "AWS S3" "$host3"
+    test_endpoint "$url4" "ThinkBroadband" "$host4"
+    test_endpoint "$url5" "CloudLinux" "$host5"
+    test_endpoint "$url6" "VirtueAzure" "$host6"
+    
+    if [ $auto_run_mode -eq 0 ]; then
         echo "================================="
         echo
-        echo "4x simultaneous downloads from multiple sources"
+        echo "6x simultaneous downloads from multiple sources"
     fi
     
     write_output download >> speedtest.log &
@@ -253,26 +278,87 @@ while [ $i -gt 0 ]; do
 
     sleep 2
     
+    # Test upload endpoints
     if [ $auto_run_mode -eq 0 ]; then
         echo
         echo
         echo "Checking upload destinations validity..."
         echo "======================================="
+    fi
+    
+    # Test upload endpoints and collect status
+    test_upload_endpoint() {
+        local url="$1"
+        local name="$2"
+        local host="$3"
         
-        echo -n "VirtueAzure FTP: "
-        if curl --connect-timeout 3 -s ftp://virtueazure.pinescore.com --user ftp_speedtest:ftp_speedtest 2>&1 | grep -q "530\|Permission denied" || [ $? -eq 0 ]; then
-            echo "REACHABLE (auth may fail)"
+        if curl -I -s --connect-timeout 3 "$url" | grep -q "200\|404\|405"; then
+            status="REACHABLE"
+            upload_status="${upload_status}${name}:OK;"
         else
-            echo "UNREACHABLE"
+            status="UNREACHABLE"
+            upload_status="${upload_status}${name}:FAIL;"
         fi
         
-        echo -n "Pinescore FTP: "
-        if curl --connect-timeout 3 -s ftp://pinescore.com --user ftp_speedtest.pinescore:ftp_speedtest.pinescore 2>&1 | grep -q "530\|Permission denied" || [ $? -eq 0 ]; then
-            echo "REACHABLE (auth may fail)"
-        else
-            echo "UNREACHABLE"
+        if [ $auto_run_mode -eq 0 ]; then
+            echo "$name: $status"
         fi
         
+        # Run traceroute for upload endpoints too
+        if [ "$status" = "REACHABLE" ]; then
+            (traceroute -m 10 -w 1 "$host" 2>/dev/null | tail -n +2 | head -5 > "/tmp/trace_upload_${name}.tmp") &
+        fi
+    }
+    
+    # Test FTP endpoints with error reporting
+    test_ftp_endpoint() {
+        local url="$1"
+        local name="$2"
+        local host="$3"
+        
+        # Test FTP connectivity using curl and capture error
+        error_output=$(curl -s --connect-timeout 3 "$url" 2>&1)
+        exit_code=$?
+        
+        if [ $exit_code -eq 0 ]; then
+            status="REACHABLE"
+            upload_status="${upload_status}${name}:OK;"
+        else
+            status="UNREACHABLE"
+            # Extract meaningful error message
+            if echo "$error_output" | grep -q "Connection refused"; then
+                error_msg="Connection refused"
+            elif echo "$error_output" | grep -q "timeout"; then
+                error_msg="Timeout"
+            elif echo "$error_output" | grep -q "not resolve"; then
+                error_msg="DNS resolution failed"
+            elif echo "$error_output" | grep -q "Access denied"; then
+                error_msg="Access denied"
+            else
+                error_msg="Connection failed"
+            fi
+            upload_status="${upload_status}${name}:FAIL(${error_msg});"
+        fi
+        
+        if [ $auto_run_mode -eq 0 ]; then
+            if [ "$status" = "REACHABLE" ]; then
+                echo "$name: $status"
+            else
+                echo "$name: $status - $error_msg"
+            fi
+        fi
+        
+        # Run traceroute for FTP endpoints too
+        if [ "$status" = "REACHABLE" ]; then
+            (traceroute -m 10 -w 1 "$host" 2>/dev/null | tail -n +2 | head -5 > "/tmp/trace_upload_${name}.tmp") &
+        fi
+    }
+    
+    # Test FTP endpoints only (HTTP endpoints won't support 1GB uploads)
+    test_ftp_endpoint "ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/" "PinescoreFTP" "pinescore.com"
+    test_ftp_endpoint "ftp://ftp_speedtest:ftp_speedtest@virtueazure.pinescore.com/" "VirtueAzureFTP" "virtueazure.pinescore.com"
+    
+    if [ $auto_run_mode -eq 0 ]; then
         echo "======================================="
         echo
         echo "Aggregated upload test"
@@ -281,21 +367,43 @@ while [ $i -gt 0 ]; do
     # Wait for any residual download traffic to finish
     sleep 3
     
-    # Create a larger test file for sustained upload (20MB)
-    dd if=/dev/urandom of=upload_test.bin bs=1M count=20 2>/dev/null
+    # Create 1GB upload test file for realistic speed measurement (like original script)
+    dd if=/dev/urandom of=upload_test.bin bs=1M count=1024 2>/dev/null
     
-    # Start measurement first, then begin uploads
-    write_output upload >> speedtest.log &
-    sleep 1
+    # Record initial interface bytes before upload
+    initial_bytes=$(get_ispeed upload)
+    start_time=$(date +%s)
     
-    # Multiple sustained uploads to maximize throughput  
-    curl -X POST -F "file=@upload_test.bin" https://httpbin.org/post 2>/dev/null &
-    curl -X POST -F "file=@upload_test.bin" https://postman-echo.com/post 2>/dev/null &
-    curl -T upload_test.bin https://transfer.sh/upload_test.bin 2>/dev/null &
-    curl -X POST -F "file=@upload_test.bin" https://httpbingo.org/post 2>/dev/null &
+    # FTP uploads using credentials from original script (16 second timeout like original)
+    curl -T upload_test.bin ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/ --max-time 16 2>/dev/null &
+    upload_pid1=$!
+    curl -T upload_test.bin ftp://ftp_speedtest:ftp_speedtest@virtueazure.pinescore.com/ --max-time 16 2>/dev/null &
+    upload_pid2=$!
     
-    # Wait for upload measurement to complete (16+ seconds)
-    sleep 20
+    # Monitor upload progress for 16 seconds
+    max_upload_mbps=0
+    for i in $(seq 1 16); do
+        sleep 1
+        current_bytes=$(get_ispeed upload)
+        bytes_diff=$((current_bytes - initial_bytes))
+        elapsed=$(($(date +%s) - start_time))
+        if [ $elapsed -gt 0 ] && [ $bytes_diff -gt 0 ]; then
+            mbps=$((bytes_diff * 8 / elapsed / 1000000))
+            if [ $mbps -gt $max_upload_mbps ]; then
+                max_upload_mbps=$mbps
+            fi
+            if [ $auto_run_mode -eq 0 ]; then
+                echo "         upload $((bytes_diff / elapsed / 1000000)) MB/s (${mbps}Mb/s)   |  $(date)"
+            fi
+        fi
+    done
+    
+    # Wait for uploads to complete
+    wait $upload_pid1 2>/dev/null
+    wait $upload_pid2 2>/dev/null
+    
+    # Store final upload speed
+    echo "$max_upload_mbps" > /tmp/upload_speed.tmp
     
     # Clean up download and upload files
     rm -f iPad_Pro_HFR* > /dev/null 2>&1
@@ -343,8 +451,21 @@ while [ $i -gt 0 ]; do
             json_upload_mbps=0
         fi
         
-        # Create JSON object and append to file
-        json_line="{\"timestamp\":\"$json_timestamp\",\"download_mbps\":$json_download_mbps,\"upload_mbps\":$json_upload_mbps,\"duration\":$json_duration,\"run_type\":\"$run_type\",\"interface\":\"$external_interface\"}"
+        # Wait for traceroute data to complete
+        sleep 3
+        
+        # Collect traceroute data
+        traceroute_data=""
+        for name in "Apple_CDN" "Pinescore" "AWS_S3" "ThinkBroadband" "CloudLinux" "VirtueAzure" "upload_PinescoreFTP" "upload_VirtueAzureFTP"; do
+            if [ -f "/tmp/trace_${name}.tmp" ]; then
+                trace_content=$(cat "/tmp/trace_${name}.tmp" | tr '\n' '|' | sed 's/|$//')
+                traceroute_data="${traceroute_data}${name}:${trace_content};"
+                rm -f "/tmp/trace_${name}.tmp"
+            fi
+        done
+        
+        # Create JSON object with diagnostic data
+        json_line="{\"timestamp\":\"$json_timestamp\",\"download_mbps\":$json_download_mbps,\"upload_mbps\":$json_upload_mbps,\"duration\":$json_duration,\"run_type\":\"$run_type\",\"interface\":\"$external_interface\",\"download_status\":\"$download_status\",\"upload_status\":\"$upload_status\",\"traceroute\":\"$traceroute_data\"}"
         echo "$json_line" >> data/results.json
         
         # Also log to regular log

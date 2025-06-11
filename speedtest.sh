@@ -151,7 +151,7 @@ while [ $i -gt 0 ]; do
         killall -q -s 9 tail
         rm -f ${temp_file}
         rm -f iPad_Pro_HFR* > /dev/null 2>&1
-        rm -f ns_1GB.zip* > /dev/null 2>&1
+        rm -f ns_1GB*.zip > /dev/null 2>&1
         rm -f 1GB.zip* > /dev/null 2>&1
         rm -f VTL-ST_1GB.zip > /dev/null 2>&1
         rm -f upload_test.bin > /dev/null 2>&1
@@ -182,13 +182,14 @@ while [ $i -gt 0 ]; do
             interface="get_ispeed upload"
             killprocess=curl
             wgetrunning="yes"
-            # Add 3-second warmup delay for uploads only
-            warmup_delay=3
+            # Add 6-second warmup delay for uploads
+            warmup_delay=6
         else
             interface=get_ispeed
             killprocess=curl
             wgetrunning="yes"
-            warmup_delay=0
+            # Add 3-second warmup delay for downloads too
+            warmup_delay=3
         fi
         
         sleep 1
@@ -235,18 +236,14 @@ while [ $i -gt 0 ]; do
             wgetrunning="$(pgrep $killprocess)"
         done
         
-        # Calculate average speed (avoid division by zero)
-        if [ $count -gt 0 ]; then
-            avg_mbps=$((total_mbps / count))
-        else
-            avg_mbps=0
-        fi
+        # Use maximum speed instead of average for better representation
+        final_speed=$max_mbps
         
-        # Store average speed (not max) to temp files for JSON output
+        # Store maximum speed to temp files for JSON output
         if [ "$1" = "download" ]; then
-            echo $avg_mbps > /tmp/download_speed.tmp
+            echo $final_speed > /tmp/download_speed.tmp
         else
-            echo $avg_mbps > /tmp/upload_speed.tmp
+            echo $final_speed > /tmp/upload_speed.tmp
         fi
         
         sleep 1
@@ -368,12 +365,17 @@ while [ $i -gt 0 ]; do
     fi
     
     write_output download >> speedtest.log &
-    curl -s -o ns_1GB.zip -O "$url1" \
-    -O "$url2" \
-    -O "$url3" \
-    -O "$url4" \
-    -O "$url5" \
-    -O "$url6"
+    
+    # Start 6 simultaneous downloads in background
+    curl -s -o ns_1GB_1.zip "$url1" &
+    curl -s -o ns_1GB_2.zip "$url2" &
+    curl -s -o ns_1GB_3.zip "$url3" &
+    curl -s -o ns_1GB_4.zip "$url4" &
+    curl -s -o ns_1GB_5.zip "$url5" &
+    curl -s -o ns_1GB_6.zip "$url6" &
+    
+    # Wait for write_output to finish (16 seconds) and kill downloads
+    wait $!
 
     sleep 2
     
@@ -526,7 +528,7 @@ while [ $i -gt 0 ]; do
     
     # Clean up download and upload files
     rm -f iPad_Pro_HFR* > /dev/null 2>&1
-    rm -f ns_1GB.zip* > /dev/null 2>&1
+    rm -f ns_1GB*.zip > /dev/null 2>&1
     rm -f 1GB.zip* > /dev/null 2>&1
     rm -f VTL-ST_1GB.zip > /dev/null 2>&1
     rm -f upload_test.bin > /dev/null 2>&1

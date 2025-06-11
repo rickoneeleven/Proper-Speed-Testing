@@ -214,10 +214,23 @@ curl -I ftp://ftp_speedtest.pinescore:ftp_speedtest.pinescore@pinescore.com/
 
 ```bash
 # Run with debugging output
-bash -x ./speedtest.sh eth0
+bash -x ./speedtest.sh
 
 # Check cron debug logs
 tail -f cron-debug.log
+```
+
+### Emergency Stop Commands
+
+```bash
+# Kill all downloads
+sudo pkill -f "curl.*ns_1GB"
+
+# Kill all uploads
+sudo pkill -f "curl.*-T"
+
+# Kill all speed test processes
+sudo pkill -f speedtest.sh; sudo pkill curl
 ```
 
 ## Data Management

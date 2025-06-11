@@ -278,25 +278,62 @@ while [ $i -gt 0 ]; do
         local name="$2"
         local host="$3"
         
-        # Capture curl output and test result
-        curl_output=$(curl -I -s --connect-timeout 3 "$url" 2>&1)
-        curl_exit_code=$?
+        # First do a quick header check
+        curl_header=$(curl -I -s --connect-timeout 3 "$url" 2>&1 | head -1)
         
-        if echo "$curl_output" | grep -q "200\|302"; then
+        if echo "$curl_header" | grep -q "200\|302"; then
             status="VALID"
             download_status="${download_status}${name}:OK;"
+            
+            # For valid endpoints, capture actual download progress (3 seconds)
+            if [ $auto_run_mode -eq 0 ]; then
+                echo -n "$name: $status - Testing speed... "
+            fi
+            
+            # Capture download progress output (3 second test)
+            progress_output=$(curl -o /dev/null --max-time 3 "$url" 2>&1 | tail -3)
+            
+            # Extract meaningful info from progress output
+            # Look for lines with download speed info
+            speed_line=$(echo "$progress_output" | grep -E "[0-9]+k" | tail -1)
+            
+            if [ -n "$speed_line" ]; then
+                # Extract the download speed (usually in format like "5839k")
+                dl_speed_k=$(echo "$speed_line" | grep -oE "[0-9]+k" | tail -1 | sed 's/k//')
+                # Extract file size if visible (like "1024M")
+                file_size_m=$(echo "$progress_output" | grep -oE "[0-9]+M" | head -1 | sed 's/M//')
+                
+                if [ -n "$dl_speed_k" ]; then
+                    # Convert k/s to Mbit/s (multiply by 8, divide by 1000)
+                    # Using awk for decimal calculation
+                    dl_speed_mbit=$(echo "$dl_speed_k" | awk '{printf "%.1f", $1 * 8 / 1000}')
+                    summary="${curl_header} | Speed: ${dl_speed_mbit} Mbit/s"
+                    if [ -n "$file_size_m" ]; then
+                        summary="${summary} | File Size: ${file_size_m} MB"
+                    fi
+                else
+                    summary="${curl_header} | Testing completed"
+                fi
+            else
+                summary="${curl_header}"
+            fi
+            
+            if [ $auto_run_mode -eq 0 ]; then
+                echo "done"
+            fi
         else
             status="INVALID"
             download_status="${download_status}${name}:FAIL;"
+            summary="${curl_header}"
+            
+            if [ $auto_run_mode -eq 0 ]; then
+                echo "$name: $status"
+            fi
         fi
         
-        # Store summary for web interface (first 200 chars, safe for JSON)
-        summary=$(echo "$curl_output" | head -1 | cut -c1-200 | tr '"' "'" | tr '\n\r' ' ')
+        # Store summary for web interface (first 400 chars now, safe for JSON)
+        summary=$(echo "$summary" | cut -c1-400 | tr '"' "'" | tr '\n\r' ' ')
         download_details="${download_details}${name}|${status}|${summary};"
-        
-        if [ $auto_run_mode -eq 0 ]; then
-            echo "$name: $status"
-        fi
         
         # Run traceroute in background (limit to 10 hops for speed)
         if [ "$status" = "VALID" ]; then
@@ -372,6 +409,39 @@ while [ $i -gt 0 ]; do
         if [ $exit_code -eq 0 ]; then
             status="REACHABLE"
             upload_status="${upload_status}${name}:OK;"
+            
+            # For reachable endpoints, test upload speed with a smaller test file
+            if [ $auto_run_mode -eq 0 ]; then
+                echo -n "$name: $status - Testing upload speed... "
+            fi
+            
+            # Create a 10MB test file if it doesn't exist
+            if [ ! -f /tmp/upload_speed_test.bin ] || [ $(stat -c%s /tmp/upload_speed_test.bin 2>/dev/null || echo 0) -ne 10485760 ]; then
+                dd if=/dev/urandom of=/tmp/upload_speed_test.bin bs=1M count=10 2>/dev/null
+            fi
+            
+            # Test upload speed (3 second timeout)
+            upload_output=$(curl -T /tmp/upload_speed_test.bin "$url" --max-time 3 2>&1 | tail -5)
+            
+            # Extract upload speed
+            speed_line=$(echo "$upload_output" | grep -E "[0-9]+k" | tail -1)
+            if [ -n "$speed_line" ]; then
+                ul_speed_k=$(echo "$speed_line" | grep -oE "[0-9]+k" | tail -1 | sed 's/k//')
+                if [ -n "$ul_speed_k" ]; then
+                    # Convert k/s to Mbit/s
+                    ul_speed_mbit=$(echo "$ul_speed_k" | awk '{printf "%.1f", $1 * 8 / 1000}')
+                    # Don't include the directory listing, just show status and speed
+                    summary="FTP Connected | Upload Speed: ${ul_speed_mbit} Mbit/s"
+                else
+                    summary="FTP Connected | Upload test completed"
+                fi
+            else
+                summary="FTP Connected"
+            fi
+            
+            if [ $auto_run_mode -eq 0 ]; then
+                echo "done"
+            fi
         else
             status="UNREACHABLE"
             # Extract meaningful error message
@@ -387,19 +457,16 @@ while [ $i -gt 0 ]; do
                 error_msg="Connection failed"
             fi
             upload_status="${upload_status}${name}:FAIL(${error_msg});"
-        fi
-        
-        # Store summary for web interface (first 200 chars, safe for JSON)
-        summary=$(echo "$error_output" | head -1 | cut -c1-200 | tr '"' "'" | tr '\n\r' ' ')
-        upload_details="${upload_details}${name}|${status}|${summary};"
-        
-        if [ $auto_run_mode -eq 0 ]; then
-            if [ "$status" = "REACHABLE" ]; then
-                echo "$name: $status"
-            else
+            summary="${error_output}"
+            
+            if [ $auto_run_mode -eq 0 ]; then
                 echo "$name: $status - $error_msg"
             fi
         fi
+        
+        # Store summary for web interface (first 400 chars, safe for JSON)
+        summary=$(echo "$summary" | head -1 | cut -c1-400 | tr '"' "'" | tr '\n\r' ' ')
+        upload_details="${upload_details}${name}|${status}|${summary};"
         
         # Run traceroute for FTP endpoints too
         if [ "$status" = "REACHABLE" ]; then

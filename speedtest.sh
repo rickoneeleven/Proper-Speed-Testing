@@ -63,20 +63,30 @@ if [ "$1" = "--cron-check" ]; then
 fi
 
 # Regular speed test logic starts here
+# Auto-detect interface if not provided
 if [ -z "$1" ]; then
-    echo
-    echo "Usage: $0 <interface> [cron|--auto-run]"
-    echo "       $0 --cron-check"
-    echo
-    echo "Examples:"
-    echo "  Manual run:     $0 eth0"
-    echo "  24-hour mode:   $0 eth0 cron"
-    echo "  Cron checker:   $0 --cron-check"
-    echo
-    exit 1
+    # Auto-detect default interface
+    external_interface=$(ip route | grep default | awk '{print $5}' | head -n1)
+    if [ -z "$external_interface" ]; then
+        echo "Error: Could not auto-detect default network interface"
+        echo "Please specify interface manually:"
+        echo
+        echo "Usage: $0 [interface] [cron|--auto-run]"
+        echo "       $0 --cron-check"
+        echo
+        echo "Examples:"
+        echo "  Auto-detect:    $0"
+        echo "  Manual run:     $0 eth0"
+        echo "  24-hour mode:   $0 eth0 cron"
+        echo "  Cron checker:   $0 --cron-check"
+        echo
+        echo "Find your interface: ip route | grep default"
+        exit 1
+    fi
+    echo "Auto-detected interface: $external_interface"
+else
+    external_interface=$1
 fi
-
-external_interface=$1
 auto_run_mode=0
 json_output=0
 

@@ -1,4 +1,9 @@
-# Dependencies
+# Speed test runtime files
+data/
+.next_run_time
+*.log
+
+# Dependencies  
 node_modules/
 
 # Build outputs
@@ -10,10 +15,6 @@ build/
 .env.local
 .env.*.local
 
-# Logs
-*.log
-npm-debug.log*
-
 # OS files
 .DS_Store
-Thumbs.dbdata/
+Thumbs.db

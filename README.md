@@ -31,18 +31,6 @@ sudo apt-get update
 sudo apt-get install -y net-tools curl
 ```
 
-**CentOS/RHEL:**
-```bash
-sudo yum install -y net-tools curl
-```
-
-**Alpine Linux (routers/firewalls):**
-```bash
-apk add net-tools curl
-```
-
-**Note:** `net-tools` provides the `ifconfig` command required for interface monitoring. Modern systems may use `ip` command, but `ifconfig` is needed for compatibility.
-
 ### 3. Setup Automated Testing
 
 Add the cron job for automated testing:
@@ -72,7 +60,7 @@ crontab -e
 Test that everything works:
 
 ```bash
-# Run a manual test (replace 'eth0' with your interface)
+# Run a manual test (replace 'eth0' with your interface, optional, it will and detect WAN routed interface)
 ./speedtest.sh eth0
 
 # Check that cron scheduling works
@@ -130,20 +118,6 @@ tail -20 speedtest.log
 cat .next_run_time | xargs -I {} date -d @{}
 ```
 
-## File Structure
-
-```
-├── speedtest.sh           # Main speed test script
-├── index.html            # Web dashboard
-├── data/
-│   └── results.json      # Speed test results (auto-managed)
-├── .next_run_time        # Next scheduled test time
-├── cron-debug.log        # Cron activity log (auto-managed)
-├── speedtest.log         # General activity log
-├── CLAUDE.md             # Technical documentation
-└── README.md             # This file
-```
-
 ## Configuration
 
 ### Network Interface Detection
@@ -155,12 +129,6 @@ The script auto-detects your default network interface for cron runs. For manual
 ip route | grep default
 # or
 ifconfig
-
-# Common interface names:
-# - eth0, eth1 (Ethernet)
-# - wlan0, wlan1 (WiFi)  
-# - ens18, enp0s3 (Modern Linux)
-```
 
 ### Customizing Test Schedule
 
@@ -184,20 +152,6 @@ rm .next_run_time
 - **Hourly**: Random minute each hour (0-59)
 
 ## Troubleshooting
-
-### Cron Not Running
-
-```bash
-# Check if cron service is running
-sudo systemctl status cron   # Ubuntu/Debian
-sudo systemctl status crond  # CentOS/RHEL
-
-# Verify crontab entry
-crontab -l | grep speedtest
-
-# Check cron logs
-tail -f /var/log/cron
-```
 
 ### Permission Issues
 
@@ -258,78 +212,6 @@ The system automatically manages file sizes:
 - **Temporary files**: Auto-cleaned after each test
 
 ## Project Status
-
-**Current Version: Production Ready ✅**
-
-Recent improvements:
-- **Hourly testing mode**: New --hourly option for more frequent monitoring
-- **Fixed upload speed measurement**: Now uses average speeds with warmup periods instead of burst speeds
-- **Enhanced endpoint testing**: Real-time speed capture for all download and upload endpoints
-- **Improved web dashboard**: Shows actual transfer speeds, file sizes, and detailed diagnostics
-- **Better cache handling**: Frontend now properly refreshes scheduled test times
-- **Accurate speed reporting**: Realistic speeds matching connection capabilities
-
-The system is fully functional and ready for long-term deployment.
-
-## Advanced Usage
-
-### Integration with Monitoring
-
-```bash
-# Export data for external tools
-jq '.download_mbps' data/results.json
-
-# Get average speeds
-jq '[.download_mbps] | add/length' data/results.json
-
-# View latest test with all details
-tail -1 data/results.json | jq '.'
-```
-
-### Web Server Setup
-
-For permanent web access, configure a web server:
-
-**Apache:**
-```apache
-<Directory "/path/to/Proper-Speed-Testing">
-    AllowOverride None
-    Require all granted
-</Directory>
-```
-
-**Nginx:**
-```nginx
-location /speedtest {
-    alias /path/to/Proper-Speed-Testing;
-    index index.html;
-}
-```
-
-## Requirements
-
-- **OS**: Linux with basic shell support (bash/sh)
-- **Dependencies**: 
-  - `curl` (for HTTP/FTP transfers and speed testing)
-  - `net-tools` package (provides `ifconfig` for interface monitoring)
-  - `awk` (for random number generation and text processing)
-  - `dd` (for creating test files)
-  - `traceroute` (optional, for network diagnostics)
-- **Network**: Internet access for speed tests to external servers
-- **Storage**: ~10MB for long-term data collection (auto-managed)
-- **Cron**: For automated scheduling (standard on all Linux systems)
-
-## Compatibility
-
-Tested on:
-- Ubuntu 18.04+
-- Debian 9+
-- CentOS 7+
-- Most routers/firewalls with busybox
-
-## License
-
-MIT License - see repository for details
 
 ## Support
 

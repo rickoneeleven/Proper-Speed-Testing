@@ -107,12 +107,14 @@
             font-weight: bold;
         }
         .endpoint-ok {
-            background: #1f4d2f;
+            background: #1a3a1a;
             color: #7ee83f;
+            border: 1px solid #2ea043;
         }
         .endpoint-fail {
-            background: #4d1f1f;
+            background: #3d1414;
             color: #f85149;
+            border: 1px solid #da3633;
         }
         .traceroute-info {
             font-family: monospace;
@@ -387,7 +389,7 @@
                     const output = parts.slice(2).join(' | ');
                     if (name && status) {
                         const dot = status === 'VALID' ? '🟢' : '🔴';
-                        html += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">`;
+                        html += `<div style="margin: 10px 0; padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px;">`;
                         html += `<strong>${dot} ${name}</strong><br>`;
                         html += `<div style="font-family: monospace; font-size: 0.8em; color: #666; margin-top: 5px; word-break: break-all;">${output || 'No output captured'}</div>`;
                         html += `</div>`;
@@ -417,7 +419,7 @@
                     const output = parts.slice(2).join(' | ');
                     if (name && status) {
                         const dot = status === 'REACHABLE' ? '🟢' : '🔴';
-                        html += `<div style="margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">`;
+                        html += `<div style="margin: 10px 0; padding: 10px; background: #0d1117; border: 1px solid #30363d; border-radius: 4px;">`;
                         html += `<strong>${dot} ${name}</strong><br>`;
                         html += `<div style="font-family: monospace; font-size: 0.8em; color: #666; margin-top: 5px; word-break: break-all;">${output || 'No output captured'}</div>`;
                         html += `</div>`;

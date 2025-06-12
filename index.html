@@ -233,6 +233,7 @@
                         <th>Duration</th>
                         <th>Run Type</th>
                         <th>Interface</th>
+                        <th>2nd Hop</th>
                     </tr>
                 </thead>
                 <tbody id="resultsBody">
@@ -248,6 +249,42 @@
         
         function formatDuration(seconds) {
             return `${seconds}s`;
+        }
+        
+        function extractSecondHop(traceroute) {
+            if (!traceroute) return 'N/A';
+            
+            // Split by semicolon to get individual endpoint traces
+            const traces = traceroute.split(';').filter(t => t.trim());
+            
+            // Look for the first valid traceroute with at least 2 hops
+            for (const trace of traces) {
+                const parts = trace.split(':');
+                if (parts.length < 2) continue;
+                
+                const hops = parts[1].split('|').filter(h => h.trim());
+                if (hops.length >= 2) {
+                    // Extract just the hostname/IP from the 2nd hop
+                    // Format is typically: "2  hostname (IP)  latency ms"
+                    const secondHop = hops[1].trim();
+                    // Look for pattern: number, then hostname/IP (with optional parentheses)
+                    const match = secondHop.match(/^\d+\s+([^\s(]+(?:\s*\([^)]+\))?)/);
+                    if (match) {
+                        return match[1].trim();
+                    }
+                    // Fallback: split by spaces and take the second element
+                    const hopParts = secondHop.split(/\s+/);
+                    if (hopParts.length >= 2) {
+                        // Check if second part includes parentheses
+                        if (hopParts.length >= 3 && hopParts[2].startsWith('(')) {
+                            return hopParts[1] + ' ' + hopParts[2];
+                        }
+                        return hopParts[1];
+                    }
+                }
+            }
+            
+            return 'N/A';
         }
         
         function getNextTestTime() {
@@ -441,6 +478,7 @@
                             <td>${formatDuration(result.duration)}</td>
                             <td><span class="run-type ${result.run_type}">${result.run_type}</span></td>
                             <td>${result.interface}</td>
+                            <td>${extractSecondHop(result.traceroute)}</td>
                         `;
                         
                         // Add click handler to show details for this test

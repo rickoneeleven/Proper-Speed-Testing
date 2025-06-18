@@ -227,6 +227,204 @@
         .delete-btn:hover {
             background: #4d1f1f;
         }
+        
+        /* DNS Monitoring Styles */
+        .dns-monitoring {
+            margin: 30px 0;
+            background: #21262d;
+            border-radius: 6px;
+            padding: 20px;
+            border: 1px solid #30363d;
+            border-left: 4px solid #fd7e14;
+        }
+        
+        .dns-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .dns-header h3 {
+            margin: 0;
+            color: #f0f6fc;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .dns-status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #8b949e;
+        }
+        
+        .dns-status-indicator.running {
+            background: #7ee83f;
+            box-shadow: 0 0 8px rgba(126, 232, 63, 0.3);
+        }
+        
+        .dns-status-indicator.stopped {
+            background: #f85149;
+            box-shadow: 0 0 8px rgba(248, 81, 73, 0.3);
+        }
+        
+        .dns-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .dns-btn {
+            background: #0969da;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s;
+        }
+        
+        .dns-btn:hover {
+            background: #0860ca;
+        }
+        
+        .dns-btn.danger {
+            background: #da3633;
+        }
+        
+        .dns-btn.danger:hover {
+            background: #b92c29;
+        }
+        
+        .dns-btn.success {
+            background: #238636;
+        }
+        
+        .dns-btn.success:hover {
+            background: #2ea043;
+        }
+        
+        .dns-server-management {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #0d1117;
+            border-radius: 4px;
+            border: 1px solid #30363d;
+        }
+        
+        .dns-add-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .dns-add-input {
+            flex: 1;
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+        
+        .dns-add-input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        
+        .dns-servers-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .dns-server-tag {
+            background: #1f3a5f;
+            color: #79c0ff;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .dns-server-remove {
+            background: none;
+            border: none;
+            color: #f85149;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 0;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .dns-server-remove:hover {
+            background: #4d1f1f;
+        }
+        
+        .dns-stats-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background: #0d1117;
+        }
+        
+        .dns-stats-table th,
+        .dns-stats-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #30363d;
+            font-size: 0.9em;
+        }
+        
+        .dns-stats-table th {
+            background: #161b22;
+            color: #f0f6fc;
+            font-weight: bold;
+        }
+        
+        .dns-stats-table tr:hover {
+            background: #161b22;
+        }
+        
+        .dns-response-time {
+            font-family: monospace;
+            color: #58a6ff;
+        }
+        
+        .dns-response-time.good {
+            color: #7ee83f;
+        }
+        
+        .dns-response-time.slow {
+            color: #fd7e14;
+        }
+        
+        .dns-response-time.bad {
+            color: #f85149;
+        }
+        
+        .dns-empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #8b949e;
+            font-style: italic;
+        }
+        
+        .dns-last-update {
+            font-size: 0.8em;
+            color: #8b949e;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -267,6 +465,54 @@
             <div class="stat-card">
                 <div class="stat-label">Next Test</div>
                 <div class="stat-value" id="nextTest">-</div>
+            </div>
+        </div>
+        
+        <!-- DNS Monitoring Section -->
+        <div class="dns-monitoring" id="dnsMonitoring">
+            <div class="dns-header">
+                <h3>
+                    🌐 DNS Server Monitoring
+                    <span class="dns-status-indicator" id="dnsStatusIndicator"></span>
+                </h3>
+                <div class="dns-actions">
+                    <button class="dns-btn success" onclick="forceDnsLookup()">Force Lookup</button>
+                    <button class="dns-btn danger" onclick="resetDnsData()">Reset Data</button>
+                </div>
+            </div>
+            
+            <div class="dns-server-management">
+                <div class="dns-add-form">
+                    <input type="text" class="dns-add-input" id="dnsServerInput" placeholder="Enter DNS server (e.g., 8.8.8.8 or 1.1.1.1)" />
+                    <button class="dns-btn" onclick="addDnsServer()">+ Add Server</button>
+                </div>
+                <div class="dns-servers-list" id="dnsServersList">
+                    <!-- DNS servers will be populated here -->
+                </div>
+            </div>
+            
+            <div id="dnsStatsContainer">
+                <table class="dns-stats-table" id="dnsStatsTable" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Server</th>
+                            <th>Last Run</th>
+                            <th>Average</th>
+                            <th>Diff</th>
+                            <th>Sample Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dnsStatsBody">
+                    </tbody>
+                </table>
+                <div class="dns-empty-state" id="dnsEmptyState">
+                    <p>No DNS servers configured yet.</p>
+                    <p>Add DNS servers above to start monitoring response times.</p>
+                </div>
+            </div>
+            
+            <div class="dns-last-update" id="dnsLastUpdate">
+                Last update: Never
             </div>
         </div>
         
@@ -610,8 +856,278 @@
                 });
         }
         
+        // DNS Monitoring Functions
+        let dnsServers = [];
+        let dnsStats = {};
+        let dnsRefreshInterval;
+        
+        function loadDnsConfig() {
+            fetch('dns-config.php?action=list')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        dnsServers = data.servers || [];
+                        updateDnsServersList();
+                        loadDnsStatus();
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load DNS config:', error);
+                });
+        }
+        
+        function updateDnsServersList() {
+            const container = document.getElementById('dnsServersList');
+            
+            if (dnsServers.length === 0) {
+                container.innerHTML = '<p style="color: #8b949e; font-style: italic; margin: 0;">No DNS servers configured</p>';
+                return;
+            }
+            
+            container.innerHTML = dnsServers.map(server => `
+                <div class="dns-server-tag">
+                    ${server}
+                    <button class="dns-server-remove" onclick="removeDnsServer('${server}')" title="Remove ${server}">×</button>
+                </div>
+            `).join('');
+        }
+        
+        function addDnsServer() {
+            const input = document.getElementById('dnsServerInput');
+            const server = input.value.trim();
+            
+            if (!server) {
+                alert('Please enter a DNS server address');
+                return;
+            }
+            
+            fetch('dns-config.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'add',
+                    server: server
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    input.value = '';
+                    dnsServers = data.servers;
+                    updateDnsServersList();
+                    showDnsMessage('DNS server added successfully', 'success');
+                } else {
+                    showDnsMessage(`Error: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showDnsMessage(`Error: ${error.message}`, 'error');
+            });
+        }
+        
+        function removeDnsServer(server) {
+            if (!confirm(`Remove DNS server ${server}?`)) {
+                return;
+            }
+            
+            fetch('dns-config.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'remove',
+                    server: server
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    dnsServers = data.servers;
+                    updateDnsServersList();
+                    loadDnsStatus(); // Refresh stats
+                    showDnsMessage('DNS server removed successfully', 'success');
+                } else {
+                    showDnsMessage(`Error: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showDnsMessage(`Error: ${error.message}`, 'error');
+            });
+        }
+        
+        function resetDnsData() {
+            if (!confirm('This will delete all DNS monitoring data. Are you sure?')) {
+                return;
+            }
+            
+            fetch('dns-config.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'reset'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    loadDnsStatus(); // Refresh stats
+                    showDnsMessage('DNS data reset successfully', 'success');
+                } else {
+                    showDnsMessage(`Error: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showDnsMessage(`Error: ${error.message}`, 'error');
+            });
+        }
+        
+        function forceDnsLookup() {
+            fetch('dns-config.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    action: 'force-lookup'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showDnsMessage('Immediate DNS lookup triggered', 'success');
+                    // Refresh stats after a short delay
+                    setTimeout(loadDnsStatus, 2000);
+                } else {
+                    showDnsMessage(`Error: ${data.error}`, 'error');
+                }
+            })
+            .catch(error => {
+                showDnsMessage(`Error: ${error.message}`, 'error');
+            });
+        }
+        
+        function loadDnsStatus() {
+            fetch('dns-status.php')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateDnsStatusIndicator(data.daemon);
+                        updateDnsStats(data.stats);
+                        updateDnsLastUpdate(data.last_update);
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load DNS status:', error);
+                });
+        }
+        
+        function updateDnsStatusIndicator(daemon) {
+            const indicator = document.getElementById('dnsStatusIndicator');
+            
+            if (daemon.running) {
+                indicator.className = 'dns-status-indicator running';
+                indicator.title = `DNS daemon running (PID: ${daemon.pid})`;
+            } else {
+                indicator.className = 'dns-status-indicator stopped';
+                indicator.title = 'DNS daemon not running';
+            }
+        }
+        
+        function updateDnsStats(stats) {
+            const tableBody = document.getElementById('dnsStatsBody');
+            const table = document.getElementById('dnsStatsTable');
+            const emptyState = document.getElementById('dnsEmptyState');
+            
+            if (Object.keys(stats).length === 0 || dnsServers.length === 0) {
+                table.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            table.style.display = 'table';
+            
+            tableBody.innerHTML = dnsServers.map(server => {
+                const stat = stats[server] || { average: 'N/A', count: 0, last_run: 'N/A' };
+                
+                let diff = 'N/A';
+                let diffClass = '';
+                
+                if (stat.average !== 'N/A' && stat.last_run !== 'N/A') {
+                    const diffVal = stat.last_run - stat.average;
+                    diff = (diffVal > 0 ? '+' : '') + diffVal.toFixed(2);
+                    diffClass = diffVal > 10 ? 'bad' : (diffVal > 0 ? 'slow' : 'good');
+                }
+                
+                const avgClass = stat.average !== 'N/A' ? 
+                    (stat.average < 50 ? 'good' : (stat.average < 150 ? 'slow' : 'bad')) : '';
+                
+                const lastClass = stat.last_run !== 'N/A' ? 
+                    (stat.last_run < 50 ? 'good' : (stat.last_run < 150 ? 'slow' : 'bad')) : '';
+                
+                return `
+                    <tr>
+                        <td><strong>${server}</strong></td>
+                        <td><span class="dns-response-time ${lastClass}">${stat.last_run !== 'N/A' ? stat.last_run + ' ms' : 'N/A'}</span></td>
+                        <td><span class="dns-response-time ${avgClass}">${stat.average !== 'N/A' ? stat.average + ' ms' : 'N/A'}</span></td>
+                        <td><span class="dns-response-time ${diffClass}">${diff !== 'N/A' ? diff + ' ms' : 'N/A'}</span></td>
+                        <td>${stat.count}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function updateDnsLastUpdate(lastUpdate) {
+            const element = document.getElementById('dnsLastUpdate');
+            
+            if (lastUpdate) {
+                const updateTime = new Date(lastUpdate);
+                element.textContent = `Last update: ${updateTime.toLocaleString()}`;
+            } else {
+                element.textContent = 'Last update: Never';
+            }
+        }
+        
+        function showDnsMessage(message, type = 'info') {
+            // Temporarily show message in the status area
+            const statusEl = document.getElementById('status');
+            const originalText = statusEl.textContent;
+            const originalClass = statusEl.className;
+            
+            statusEl.textContent = message;
+            statusEl.className = `status ${type === 'error' ? 'error' : ''}`;
+            
+            setTimeout(() => {
+                statusEl.textContent = originalText;
+                statusEl.className = originalClass;
+            }, 3000);
+        }
+        
+        // Add Enter key support for DNS server input
+        document.addEventListener('DOMContentLoaded', function() {
+            const dnsInput = document.getElementById('dnsServerInput');
+            if (dnsInput) {
+                dnsInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        addDnsServer();
+                    }
+                });
+            }
+        });
+        
         // Load results on page load
         loadResults();
+        
+        // Load DNS configuration and start monitoring
+        loadDnsConfig();
+        
+        // Set up DNS status refresh (every 30 seconds)
+        dnsRefreshInterval = setInterval(loadDnsStatus, 30000);
         
         // Auto-refresh removed - use manual refresh button to avoid losing selected test details
     </script>

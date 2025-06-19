@@ -5,338 +5,232 @@ declare(ticks = 1);
 // DNS Monitoring Daemon
 // Runs continuously and performs DNS lookups every minute
 
+// --- Configuration and State ---
 $baseDir = __DIR__;
-$configFile = $baseDir . '/data/dns_config.json';
-$dataFile = $baseDir . '/data/dns_performance.json';
 $pidFile = $baseDir . '/data/dns-daemon.pid';
 $logFile = $baseDir . '/data/dns-daemon.log';
+$configFile = $baseDir . '/data/dns_config.json';
+$dataFile = $baseDir . '/data/dns_performance.json';
 $tempFile = $baseDir . '/data/dns_test_current.tmp';
+$heartbeatFile = $baseDir . '/data/dns-heartbeat.lock';
 
-// Global variables
+$lockHandle = null;
+$digAvailable = null; // Cache the check for 'dig' command
+
+// Global state
 $running = true;
 $config = null;
 $forceTest = false;
 
-// Logging function
-function logMessage($message) {
-    global $logFile;
-    $timestamp = date('Y-m-d H:i:s');
-    $logEntry = "[$timestamp] $message\n";
-    file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
-    echo $logEntry;
+// --- Process Lifecycle Management (Atomic Locking) ---
+function acquireLock(string $pidFile): void {
+    global $lockHandle;
+    $lockHandle = fopen($pidFile, 'w+');
+    if ($lockHandle === false) {
+        error_log(sprintf("[%s] CRITICAL: Could not open PID file for writing: %s\n", date('Y-m-d H:i:s'), $pidFile));
+        exit(1);
+    }
+    if (!flock($lockHandle, LOCK_EX | LOCK_NB)) {
+        fclose($lockHandle);
+        exit(0);
+    }
+    ftruncate($lockHandle, 0);
+    fwrite($lockHandle, (string)getmypid());
+    fflush($lockHandle);
+    register_shutdown_function('cleanup', $lockHandle, $pidFile);
 }
 
-// Signal handlers
-function sigHandler($signo) {
-    global $running, $config, $forceTest;
-    
-    switch ($signo) {
-        case SIGTERM:
-        case SIGINT:
-            logMessage("Received shutdown signal, stopping daemon...");
-            $running = false;
-            break;
-        case SIGUSR1:
-            logMessage("Received config reload signal");
-            $config = null; // Force config reload on next iteration
-            break;
-        case SIGUSR2:
-            logMessage("Received force test signal");
-            $forceTest = true;
-            break;
+function cleanup($lockHandle, string $pidFile): void {
+    if ($lockHandle) {
+        flock($lockHandle, LOCK_UN);
+        fclose($lockHandle);
     }
-}
-
-// Install signal handlers
-if (function_exists('pcntl_signal')) {
-    pcntl_signal(SIGTERM, 'sigHandler');
-    pcntl_signal(SIGINT, 'sigHandler');
-    pcntl_signal(SIGUSR1, 'sigHandler');
-    pcntl_signal(SIGUSR2, 'sigHandler');
-}
-
-// Load configuration
-function loadConfig() {
-    global $configFile;
-    
-    if (!file_exists($configFile)) {
-        return ['servers' => [], 'domains' => []];
-    }
-    
-    $config = json_decode(file_get_contents($configFile), true);
-    return $config ?: ['servers' => [], 'domains' => []];
-}
-
-// Initialize data file
-function initializeDataFile() {
-    global $dataFile;
-    
-    if (!file_exists($dataFile)) {
-        $emptyData = [
-            'metadata' => [
-                'current_cycle_id' => null,
-                'last_updated' => null,
-                'schema_version' => '2.0'
-            ],
-            'tests' => []
-        ];
-        file_put_contents($dataFile, json_encode($emptyData), LOCK_EX);
-    }
-}
-
-// Check and truncate JSON file if it exceeds 10MB
-function checkAndTruncateJson() {
-    global $dataFile;
-    
-    if (!file_exists($dataFile)) {
-        return;
-    }
-    
-    $fileSize = filesize($dataFile);
-    $maxSize = 10 * 1024 * 1024; // 10MB
-    
-    if ($fileSize > $maxSize) {
-        logMessage("JSON file exceeded 10MB ($fileSize bytes), truncating...");
-        
-        $data = json_decode(file_get_contents($dataFile), true);
-        if ($data && isset($data['tests']) && is_array($data['tests'])) {
-            // Keep only the last 1000 entries
-            $data['tests'] = array_slice($data['tests'], -1000);
-            // Update metadata
-            if (!isset($data['metadata'])) {
-                $data['metadata'] = ['schema_version' => '2.0'];
-            }
-            $data['metadata']['last_updated'] = date('c');
-            file_put_contents($dataFile, json_encode($data), LOCK_EX);
-            logMessage("File truncated to keep last 1000 entries.");
-        }
-    }
-}
-
-// Generate random subdomain for cache busting
-function generateRandomSubdomain() {
-    return 'test-' . time() . '-' . rand(1000, 9999);
-}
-
-// Measure DNS lookup time
-function measureDnsLookup($server, $domain, $cacheBust = true) {
-    if ($cacheBust) {
-        $randomSub = generateRandomSubdomain();
-        $domain = "$randomSub.$domain";
-    }
-    
-    $start = microtime(true);
-    
-    // Use PHP's dns_get_record for cross-platform compatibility
-    // We measure response time regardless of whether domain exists (for cache busting)
-    $result = @dns_get_record($domain, DNS_A, $authns, $addtl, false, $server);
-    
-    $end = microtime(true);
-    
-    // Calculate duration in milliseconds - we measure the response time even for NXDOMAIN
-    return round(($end - $start) * 1000, 3);
-}
-
-// Fallback DNS lookup using dig if available
-function measureDnsLookupDig($server, $domain, $cacheBust = true) {
-    if ($cacheBust) {
-        $randomSub = generateRandomSubdomain();
-        $domain = "$randomSub.$domain";
-    }
-    
-    $start = microtime(true);
-    
-    // Use dig command - check exit code instead of output for timing
-    $cmd = "dig @$server $domain +tries=1 +time=5 +noall +answer";
-    $output = null;
-    $exitCode = null;
-    exec($cmd, $output, $exitCode);
-    
-    $end = microtime(true);
-    
-    // If dig executed successfully (even with NXDOMAIN), we got a response time
-    if ($exitCode !== null && $exitCode <= 1) { // 0 = success, 1 = NXDOMAIN but still valid response
-        return round(($end - $start) * 1000, 3);
-    } else {
-        return -1; // Network error or timeout
-    }
-}
-
-// Test DNS servers
-function performDnsTests($servers, $domains) {
-    global $tempFile, $dataFile, $baseDir;
-    
-    // HEARTBEAT: Touch lock file to show daemon is active
-    $heartbeatFile = $baseDir . '/data/dns-heartbeat.lock';
-    touch($heartbeatFile);
-    
-    // Clear temp file
-    file_put_contents($tempFile, '');
-    
-    $cycleId = date('c');
-    $timestamp = $cycleId;
-    $results = [];
-    
-    foreach ($servers as $server) {
-        foreach ($domains as $domain) {
-            logMessage("Testing $server -> $domain...");
-            
-            // Try dig first, fall back to PHP dns_get_record
-            $responseTime = -1;
-            if (shell_exec('which dig') !== null) {
-                $responseTime = measureDnsLookupDig($server, $domain, true);
-            }
-            
-            // Fallback to PHP method if dig failed or not available
-            if ($responseTime === -1) {
-                $responseTime = measureDnsLookup($server, $domain, true);
-            }
-            
-            $status = $responseTime !== -1 ? 'success' : 'failed';
-            
-            if ($responseTime !== -1) {
-                logMessage("$server -> $domain: {$responseTime}ms");
-            } else {
-                logMessage("$server -> $domain: FAILED");
-            }
-            
-            // Store result in temp file
-            $tempResult = [
-                'server' => $server,
-                'domain' => $domain,
-                'response_time' => $responseTime
-            ];
-            file_put_contents($tempFile, json_encode($tempResult) . "\n", FILE_APPEND | LOCK_EX);
-            
-            // Prepare result for main data file
-            $result = [
-                'timestamp' => $timestamp,
-                'server' => $server,
-                'domain' => $domain,
-                'response_time' => $responseTime,
-                'status' => $status,
-                'cycle_id' => $cycleId
-            ];
-            
-            $results[] = $result;
-        }
-    }
-    
-    // Append results to main data file
-    if (!empty($results)) {
-        $data = json_decode(file_get_contents($dataFile), true);
-        if (!$data) {
-            $data = [
-                'metadata' => [
-                    'current_cycle_id' => null,
-                    'last_updated' => null,
-                    'schema_version' => '2.0'
-                ],
-                'tests' => []
-            ];
-        }
-        
-        // Ensure metadata exists
-        if (!isset($data['metadata'])) {
-            $data['metadata'] = ['schema_version' => '2.0'];
-        }
-        
-        // Update metadata
-        $data['metadata']['current_cycle_id'] = $cycleId;
-        $data['metadata']['last_updated'] = date('c');
-        
-        // Add new test results
-        $data['tests'] = array_merge($data['tests'], $results);
-        
-        // Write updated data
-        file_put_contents($dataFile, json_encode($data), LOCK_EX);
-        
-        logMessage("Stored " . count($results) . " DNS test results for cycle $cycleId");
-    }
-    
-    // Check file size periodically
-    checkAndTruncateJson();
-}
-
-
-// Main daemon function
-function runDaemon() {
-    global $running, $config, $forceTest, $pidFile;
-    
-    // PID file already written by acquireLock function
-    logMessage("DNS monitoring daemon started (PID: " . getmypid() . ")");
-    
-    // Initialize data file
-    initializeDataFile();
-    
-    $lastTestTime = 0;
-    $testInterval = 60; // 60 seconds
-    
-    while ($running) {
-        $currentTime = time();
-        
-        // Reload config if needed
-        if ($config === null) {
-            $config = loadConfig();
-            logMessage("Configuration loaded: " . count($config['servers']) . " servers, " . count($config['domains']) . " domains");
-        }
-        
-        // Check if it's time for a test (every minute) or forced
-        if ($forceTest || ($currentTime - $lastTestTime) >= $testInterval) {
-            if (!empty($config['servers']) && !empty($config['domains'])) {
-                logMessage("Starting DNS tests...");
-                performDnsTests($config['servers'], $config['domains']);
-                $lastTestTime = $currentTime;
-                logMessage("DNS tests completed");
-            } else {
-                logMessage("No DNS servers or domains configured, skipping tests");
-            }
-            
-            $forceTest = false;
-        }
-        
-        // Process signals
-        if (function_exists('pcntl_signal_dispatch')) {
-            pcntl_signal_dispatch();
-        }
-        
-        // Sleep for 1 second
-        sleep(1);
-    }
-    
-    // Cleanup
-    cleanup();
-    
-    logMessage("DNS monitoring daemon stopped");
-}
-
-// Cleanup function
-function cleanup() {
-    global $pidFile;
-    
-    // Clean up PID file
     if (file_exists($pidFile)) {
         unlink($pidFile);
     }
 }
 
-// Register cleanup function
-register_shutdown_function('cleanup');
-
-
-// Create PID file at startup
-$myPid = getmypid();
-if (file_put_contents($pidFile, $myPid) === false) {
-    logMessage("ERROR: Failed to create PID file");
-    exit(1);
+// --- Logging and Configuration ---
+function logMessage(string $message): void {
+    global $logFile;
+    $timestamp = date('Y-m-d H:i:s');
+    $logEntry = "[$timestamp] $message\n";
+    file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
 }
 
-// Ensure data directory exists
-$dataDir = dirname($dataFile);
-if (!is_dir($dataDir)) {
-    mkdir($dataDir, 0755, true);
+function loadConfig(): array {
+    global $configFile;
+    if (!file_exists($configFile)) {
+        return ['servers' => [], 'domains' => []];
+    }
+    $config = json_decode(file_get_contents($configFile), true);
+    return $config ?: ['servers' => [], 'domains' => []];
 }
 
-// Start the daemon
+// --- Signal Handling ---
+function sigHandler(int $signo): void {
+    global $running, $config, $forceTest;
+    switch ($signo) {
+        case SIGTERM: case SIGINT:
+            logMessage("Received shutdown signal, stopping daemon...");
+            $running = false;
+            break;
+        case SIGUSR1:
+            logMessage("Received config reload signal.");
+            $config = null;
+            break;
+        case SIGUSR2:
+            logMessage("Received force test signal.");
+            $forceTest = true;
+            break;
+    }
+}
+if (function_exists('pcntl_signal')) {
+    pcntl_signal(SIGTERM, 'sigHandler'); pcntl_signal(SIGINT, 'sigHandler');
+    pcntl_signal(SIGUSR1, 'sigHandler'); pcntl_signal(SIGUSR2, 'sigHandler');
+}
+
+// --- Core Logic: Measurement Functions ---
+
+function measureDnsWithDig(string $server, string $domain): float {
+    $randomSub = 'test-' . time() . '-' . rand(1000, 9999);
+    $testDomain = "$randomSub.$domain";
+    $cmd = "dig @$server $testDomain +tries=1 +time=5 +noall +stats";
+
+    $start = microtime(true);
+    $output = shell_exec($cmd);
+    $end = microtime(true);
+
+    if ($output && preg_match('/Query time: (\d+) msec/', $output, $matches)) {
+        return (float)$matches[1];
+    }
+
+    // Fallback timing for when dig succeeds but doesn't return query time (e.g., NXDOMAIN)
+    // This is less accurate but better than nothing.
+    return round(($end - $start) * 1000, 3);
+}
+
+function measureDnsWithPhp(string $server, string $domain): float {
+    $randomSub = 'test-' . time() . '-' . rand(1000, 9999);
+    $testDomain = "$randomSub.$domain";
+
+    $start = microtime(true);
+    @dns_get_record($testDomain, DNS_A, $authns, $addtl, false, $server);
+    $end = microtime(true);
+
+    return round(($end - $start) * 1000, 3);
+}
+
+// --- Core Logic: Test Execution ---
+
+function performDnsTests(array $servers, array $domains): void {
+    global $dataFile, $tempFile, $heartbeatFile, $digAvailable;
+
+    touch($heartbeatFile);
+    $cycleId = date('c');
+    $results = [];
+
+    foreach ($servers as $server) {
+        foreach ($domains as $domain) {
+            if ($digAvailable) {
+                $responseTime = measureDnsWithDig($server, $domain);
+            } else {
+                $responseTime = measureDnsWithPhp($server, $domain);
+            }
+
+            $results[] = [
+                'timestamp' => $cycleId,
+                'server' => $server,
+                'domain' => $domain,
+                'response_time' => $responseTime,
+                'status' => 'success',
+                'cycle_id' => $cycleId
+            ];
+        }
+    }
+
+    if (empty($results)) { return; }
+
+    $data = json_decode(file_get_contents($dataFile), true) ?: [];
+    $data['metadata'] = [
+        'current_cycle_id' => $cycleId,
+        'last_updated' => date('c'),
+        'schema_version' => '2.0'
+    ];
+    $data['tests'] = array_merge($data['tests'] ?? [], $results);
+
+    file_put_contents($dataFile, json_encode($data), LOCK_EX);
+    logMessage("Stored " . count($results) . " DNS test results for cycle $cycleId");
+    checkAndTruncateJson();
+}
+
+function initializeDataFile(): void {
+    global $dataFile;
+    $dataDir = dirname($dataFile);
+    if (!is_dir($dataDir)) { mkdir($dataDir, 0755, true); }
+    if (!file_exists($dataFile)) {
+        $emptyData = ['metadata' => ['schema_version' => '2.0'], 'tests' => []];
+        file_put_contents($dataFile, json_encode($emptyData), LOCK_EX);
+    }
+}
+
+function checkAndTruncateJson(): void {
+    global $dataFile;
+    $maxSize = 10 * 1024 * 1024;
+    if (!file_exists($dataFile) || filesize($dataFile) <= $maxSize) { return; }
+    logMessage("JSON file exceeded 10MB, truncating...");
+    $data = json_decode(file_get_contents($dataFile), true);
+    if ($data && isset($data['tests'])) {
+        $data['tests'] = array_slice($data['tests'], -1000);
+        $data['metadata']['last_updated'] = date('c');
+        file_put_contents($dataFile, json_encode($data), LOCK_EX);
+        logMessage("File truncated to keep last 1000 entries.");
+    }
+}
+
+// --- Main Daemon Execution ---
+
+function runDaemon(): void {
+    global $running, $config, $forceTest, $digAvailable;
+
+    logMessage("DNS monitoring daemon started (PID: " . getmypid() . ")");
+    // Check for 'dig' command once at startup
+    $digAvailable = (shell_exec('which dig') !== null);
+    if ($digAvailable) {
+        logMessage("Using 'dig' for DNS measurements (more reliable).");
+    } else {
+        logMessage("WARNING: 'dig' command not found. Falling back to less reliable PHP DNS function.");
+    }
+
+    initializeDataFile();
+    $lastTestTime = 0;
+    $testInterval = 60;
+
+    while ($running) {
+        if ($config === null) {
+            $config = loadConfig();
+            logMessage("Configuration loaded: " . count($config['servers']) . " servers, " . count($config['domains']) . " domains");
+        }
+
+        if ($forceTest || (time() - $lastTestTime) >= $testInterval) {
+            if (!empty($config['servers']) && !empty($config['domains'])) {
+                logMessage("Starting DNS tests...");
+                performDnsTests($config['servers'], $config['domains']);
+                logMessage("DNS tests completed.");
+            } else {
+                logMessage("No servers or domains configured, skipping tests.");
+            }
+            $lastTestTime = time();
+            $forceTest = false;
+        }
+
+        if (function_exists('pcntl_signal_dispatch')) { pcntl_signal_dispatch(); }
+        sleep(1);
+    }
+    logMessage("DNS monitoring daemon stopped (PID: " . getmypid() . ")");
+}
+
+// --- Script Entry Point ---
+
+acquireLock($pidFile);
 runDaemon();
-?>

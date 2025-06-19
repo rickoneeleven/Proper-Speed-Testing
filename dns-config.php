@@ -84,15 +84,44 @@ function validateDnsServer($server) {
 }
 
 function sendSignalToDaemon($signal = 'SIGUSR1') {
-    // Find the DNS daemon process
+    // First try the PID file approach
     $pidFile = __DIR__ . '/data/dns-daemon.pid';
     
     if (file_exists($pidFile)) {
-        $pid = (int)trim(file_get_contents($pidFile));
-        if ($pid > 0) {
-            // Check if process is running
-            if (posix_kill($pid, 0)) {
-                // Send signal to reload config - map signal name to number
+        $pidContent = trim(file_get_contents($pidFile));
+        if (!empty($pidContent)) {
+            $pid = (int)$pidContent;
+            if ($pid > 0) {
+                // Check if process is running
+                if (posix_kill($pid, 0)) {
+                    // Send signal - map signal name to number
+                    $signalNum = 10; // Default to SIGUSR1=10
+                    if ($signal === 'SIGUSR1') {
+                        $signalNum = 10;
+                    } elseif ($signal === 'SIGUSR2') {
+                        $signalNum = 12;
+                    } elseif ($signal === 'SIGTERM') {
+                        $signalNum = 15;
+                    }
+                    return posix_kill($pid, $signalNum);
+                } else {
+                    // Process not running, remove stale PID file
+                    unlink($pidFile);
+                }
+            }
+        }
+    }
+    
+    // Fallback: Find daemon process by name
+    $output = shell_exec('ps aux | grep dns-monitor-daemon | grep -v grep');
+    if (!empty($output)) {
+        $lines = explode("\n", trim($output));
+        if (!empty($lines[0])) {
+            $parts = preg_split('/\s+/', trim($lines[0]));
+            $pid = (int)$parts[1];
+            
+            if ($pid > 0) {
+                // Send signal - map signal name to number
                 $signalNum = 10; // Default to SIGUSR1=10
                 if ($signal === 'SIGUSR1') {
                     $signalNum = 10;
@@ -101,11 +130,7 @@ function sendSignalToDaemon($signal = 'SIGUSR1') {
                 } elseif ($signal === 'SIGTERM') {
                     $signalNum = 15;
                 }
-                posix_kill($pid, $signalNum);
-                return true;
-            } else {
-                // Process not running, remove stale PID file
-                unlink($pidFile);
+                return posix_kill($pid, $signalNum);
             }
         }
     }

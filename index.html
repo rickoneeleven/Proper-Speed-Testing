@@ -481,6 +481,8 @@
                 </div>
             </div>
             
+            <div id="dnsMessageArea" style="margin: 10px 0; padding: 10px; background: #0d1117; border-radius: 4px; display: none; text-align: center; font-weight: bold;"></div>
+            
             <div class="dns-server-management">
                 <div class="dns-add-form">
                     <input type="text" class="dns-add-input" id="dnsServerInput" placeholder="Enter DNS server (e.g., 8.8.8.8 or 1.1.1.1)" />
@@ -986,7 +988,27 @@
             });
         }
         
+        function showForceLookupMessage(message, type = 'info') {
+            const messageArea = document.getElementById('dnsMessageArea');
+            messageArea.style.display = 'block';
+            messageArea.textContent = message;
+            messageArea.style.color = type === 'error' ? '#f85149' : (type === 'success' ? '#7ee83f' : '#58a6ff');
+        }
+        
+        function hideForceLookupMessage() {
+            const messageArea = document.getElementById('dnsMessageArea');
+            messageArea.style.display = 'none';
+        }
+        
         function forceDnsLookup() {
+            const forceButton = document.querySelector('button[onclick="forceDnsLookup()"]');
+            const originalText = forceButton.textContent;
+            
+            // Show immediate feedback
+            forceButton.textContent = '⏳ Triggering...';
+            forceButton.disabled = true;
+            showForceLookupMessage('🚀 Sending force lookup request to DNS daemon...', 'info');
+            
             fetch('dns-config.php', {
                 method: 'POST',
                 headers: {
@@ -996,18 +1018,68 @@
                     action: 'force-lookup'
                 })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
-                    showDnsMessage('Immediate DNS lookup triggered', 'success');
-                    // Refresh stats after a short delay
-                    setTimeout(loadDnsStatus, 2000);
+                    forceButton.textContent = '⏳ Running...';
+                    showForceLookupMessage('✅ Signal sent! DNS tests are now executing...', 'success');
+                    
+                    // Start polling for updated data with better feedback
+                    let pollCount = 0;
+                    const maxPolls = 10;
+                    const pollInterval = setInterval(() => {
+                        console.log(`Polling DNS status... (${pollCount + 1}/${maxPolls})`);
+                        loadDnsStatus();
+                        pollCount++;
+                        
+                        // Update progress message
+                        if (pollCount <= 3) {
+                            showForceLookupMessage(`⏳ DNS tests in progress... (${pollCount}/${maxPolls})`, 'info');
+                        } else if (pollCount <= 7) {
+                            showForceLookupMessage(`🔄 Gathering results... (${pollCount}/${maxPolls})`, 'info');
+                        } else {
+                            showForceLookupMessage(`📊 Finalizing data... (${pollCount}/${maxPolls})`, 'info');
+                        }
+                        
+                        if (pollCount >= maxPolls) {
+                            clearInterval(pollInterval);
+                            forceButton.textContent = originalText;
+                            forceButton.disabled = false;
+                            showForceLookupMessage('🎉 Force lookup completed! DNS data has been refreshed.', 'success');
+                            
+                            // Hide message after 5 seconds
+                            setTimeout(hideForceLookupMessage, 5000);
+                        }
+                    }, 1200);
+                    
+                    // Fallback timer to ensure UI gets reset
+                    setTimeout(() => {
+                        if (forceButton.disabled) {
+                            forceButton.textContent = originalText;
+                            forceButton.disabled = false;
+                            showForceLookupMessage('✅ Force lookup process completed', 'success');
+                            setTimeout(hideForceLookupMessage, 3000);
+                        }
+                    }, 15000);
+                    
                 } else {
-                    showDnsMessage(`Error: ${data.error}`, 'error');
+                    forceButton.textContent = originalText;
+                    forceButton.disabled = false;
+                    showForceLookupMessage(`❌ Error: ${data.error || data.message || 'Unknown error'}`, 'error');
+                    setTimeout(hideForceLookupMessage, 5000);
                 }
             })
             .catch(error => {
-                showDnsMessage(`Error: ${error.message}`, 'error');
+                console.error('Force lookup error:', error);
+                forceButton.textContent = originalText;
+                forceButton.disabled = false;
+                showForceLookupMessage(`❌ Request failed: ${error.message}`, 'error');
+                setTimeout(hideForceLookupMessage, 5000);
             });
         }
         

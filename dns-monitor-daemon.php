@@ -116,7 +116,7 @@ if (function_exists('pcntl_signal')) {
 function measureDnsWithDig(string $server, string $domain): float {
     $randomSub = 'test-' . time() . '-' . rand(1000, 9999);
     $testDomain = "$randomSub.$domain";
-    $cmd = "dig @$server $testDomain +tries=1 +time=5 +noall +stats";
+    $cmd = "dig @$server $testDomain +tries=1 +time=10 +noall +stats";
 
     $start = microtime(true);
     $output = shell_exec($cmd);

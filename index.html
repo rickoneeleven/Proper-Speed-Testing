@@ -1257,7 +1257,7 @@
             tableBody.innerHTML = summary.map(item => {
                 return `
                     <tr>
-                        <td><a href="slow-query-api.php?action=detail&server=${encodeURIComponent(item.server)}" target="_blank" style="color: #58a6ff; text-decoration: none;"><strong>${item.server}</strong></a></td>
+                        <td><a href="slow-query-api.php?action=detail&server=${encodeURIComponent(item.server)}" target="_self" style="color: #58a6ff; text-decoration: none;"><strong>${item.server}</strong></a></td>
                         <td><span style="color: #f85149; font-weight: bold;">${item.count}</span></td>
                     </tr>
                 `;

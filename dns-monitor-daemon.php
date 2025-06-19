@@ -110,16 +110,6 @@ function measureDnsWithDig(string $server, string $domain): float {
     return round(($end - $start) * 1000, 3);
 }
 
-function measureDnsWithPhp(string $server, string $domain): float {
-    $randomSub = 'test-' . time() . '-' . rand(1000, 9999);
-    $testDomain = "$randomSub.$domain";
-
-    $start = microtime(true);
-    @dns_get_record($testDomain, DNS_A, $authns, $addtl, false, $server);
-    $end = microtime(true);
-
-    return round(($end - $start) * 1000, 3);
-}
 
 // --- Core Logic: Test Execution ---
 
@@ -132,11 +122,7 @@ function performDnsTests(array $servers, array $domains): void {
 
     foreach ($servers as $server) {
         foreach ($domains as $domain) {
-            if ($digAvailable) {
-                $responseTime = measureDnsWithDig($server, $domain);
-            } else {
-                $responseTime = measureDnsWithPhp($server, $domain);
-            }
+            $responseTime = measureDnsWithDig($server, $domain);
 
             $results[] = [
                 'timestamp' => $cycleId,
@@ -194,12 +180,13 @@ function runDaemon(): void {
     global $running, $config, $forceTest, $digAvailable;
 
     logMessage("DNS monitoring daemon started (PID: " . getmypid() . ")");
-    // Check for 'dig' command once at startup
+    // Check for 'dig' command once at startup - exit if not available
     $digAvailable = (shell_exec('which dig') !== null);
     if ($digAvailable) {
-        logMessage("Using 'dig' for DNS measurements (more reliable).");
+        logMessage("Using 'dig' for DNS measurements.");
     } else {
-        logMessage("WARNING: 'dig' command not found. Falling back to less reliable PHP DNS function.");
+        logMessage("CRITICAL: 'dig' command not found. Cannot perform DNS monitoring without dig.");
+        exit(1);
     }
 
     initializeDataFile();

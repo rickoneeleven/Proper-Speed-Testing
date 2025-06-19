@@ -31,6 +31,7 @@ fi
 
 # Attempt to start the daemon in the background.
 # The daemon script itself will check if another instance is running and exit if so.
-nohup "$DAEMON_SCRIPT" >> "$LOG_FILE" 2>&1 &
+# Use PHP 8.3 specifically for the DNS daemon
+nohup /usr/bin/php8.3 "$DAEMON_SCRIPT" >> "$LOG_FILE" 2>&1 &
 
 exit 0

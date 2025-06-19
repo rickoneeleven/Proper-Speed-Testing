@@ -518,6 +518,36 @@
             </div>
         </div>
         
+        <!-- Slow Query Report Section -->
+        <div class="dns-monitoring" id="slowQuerySection">
+            <div class="dns-header">
+                <h3>
+                    🐌 Slow Query Report
+                </h3>
+            </div>
+            
+            <div id="slowQueryContainer">
+                <table class="dns-stats-table" id="slowQueryTable" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th>Server</th>
+                            <th>Slow Query Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="slowQueryBody">
+                    </tbody>
+                </table>
+                <div class="dns-empty-state" id="slowQueryEmptyState">
+                    <p>No slow queries recorded yet.</p>
+                    <p>Queries taking longer than 1000ms will appear here.</p>
+                </div>
+            </div>
+            
+            <div class="dns-last-update" id="slowQueryLastUpdate">
+                Last update: Never
+            </div>
+        </div>
+        
         <div class="results-table">
             <h3>Recent Test Results</h3>
             <div class="loading" id="loading">Loading...</div>
@@ -1195,11 +1225,62 @@
         // Load results on page load
         loadResults();
         
+        // Slow Query Functions
+        function loadSlowQuerySummary() {
+            fetch('slow-query-api.php?action=summary')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateSlowQueryTable(data.summary);
+                        updateSlowQueryLastUpdate();
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to load slow query summary:', error);
+                });
+        }
+        
+        function updateSlowQueryTable(summary) {
+            const tableBody = document.getElementById('slowQueryBody');
+            const table = document.getElementById('slowQueryTable');
+            const emptyState = document.getElementById('slowQueryEmptyState');
+            
+            if (!summary || summary.length === 0) {
+                table.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+            
+            emptyState.style.display = 'none';
+            table.style.display = 'table';
+            
+            tableBody.innerHTML = summary.map(item => {
+                return `
+                    <tr>
+                        <td><a href="slow-query-api.php?action=detail&server=${encodeURIComponent(item.server)}" target="_blank" style="color: #58a6ff; text-decoration: none;"><strong>${item.server}</strong></a></td>
+                        <td><span style="color: #f85149; font-weight: bold;">${item.count}</span></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        function updateSlowQueryLastUpdate() {
+            const element = document.getElementById('slowQueryLastUpdate');
+            const now = new Date();
+            element.textContent = `Last update: ${now.toLocaleString()}`;
+        }
+        
         // Load DNS configuration and start monitoring
         loadDnsConfig();
         
+        // Load slow query summary
+        loadSlowQuerySummary();
+        
         // Set up DNS status refresh (every 30 seconds)
         dnsRefreshInterval = setInterval(loadDnsStatus, 30000);
+        
+        // Set up slow query refresh (every 30 seconds)
+        setInterval(loadSlowQuerySummary, 30000);
         
         // Auto-refresh removed - use manual refresh button to avoid losing selected test details
     </script>

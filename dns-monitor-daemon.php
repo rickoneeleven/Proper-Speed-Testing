@@ -1,4 +1,4 @@
-#!/usr/bin/env php
+#!/usr/bin/php8.3
 <?php
 declare(ticks = 1);
 
@@ -11,6 +11,7 @@ $pidFile = $baseDir . '/data/dns-daemon.pid';
 $logFile = $baseDir . '/data/dns-daemon.log';
 $configFile = $baseDir . '/data/dns_config.json';
 $dataFile = $baseDir . '/data/dns_performance.json';
+$slowQueryFile = $baseDir . '/data/slow_queries.json';
 $tempFile = $baseDir . '/data/dns_test_current.tmp';
 $heartbeatFile = $baseDir . '/data/dns-heartbeat.lock';
 
@@ -144,6 +145,16 @@ function performDnsTests(array $servers, array $domains): void {
         foreach ($domains as $domain) {
             $responseTime = measureDnsWithDig($server, $domain);
 
+            // Log slow queries (>1000ms)
+            if ($responseTime > 1000) {
+                logSlowQuery([
+                    'timestamp' => date('c'),
+                    'server' => $server,
+                    'domain' => $domain,
+                    'response_time' => $responseTime
+                ]);
+            }
+
             $results[] = [
                 'timestamp' => $cycleId,
                 'server' => $server,
@@ -177,6 +188,37 @@ function initializeDataFile(): void {
     if (!file_exists($dataFile)) {
         $emptyData = ['metadata' => ['schema_version' => '2.0'], 'tests' => []];
         file_put_contents($dataFile, json_encode($emptyData), LOCK_EX);
+    }
+}
+
+function logSlowQuery(array $entry): void {
+    global $slowQueryFile;
+    
+    $dataDir = dirname($slowQueryFile);
+    if (!is_dir($dataDir)) { mkdir($dataDir, 0755, true); }
+    
+    // Read existing data or create empty structure
+    $data = ['queries' => []];
+    if (file_exists($slowQueryFile)) {
+        $existing = json_decode(file_get_contents($slowQueryFile), true);
+        if ($existing && isset($existing['queries'])) {
+            $data = $existing;
+        }
+    }
+    
+    // Remove entries older than 30 days
+    $thirtyDaysAgo = date('c', strtotime('-30 days'));
+    $data['queries'] = array_filter($data['queries'], function($query) use ($thirtyDaysAgo) {
+        return isset($query['timestamp']) && $query['timestamp'] >= $thirtyDaysAgo;
+    });
+    
+    // Add new entry
+    $data['queries'][] = $entry;
+    
+    // Write atomically using temp file
+    $tempFile = $slowQueryFile . '.tmp';
+    if (file_put_contents($tempFile, json_encode($data), LOCK_EX) !== false) {
+        rename($tempFile, $slowQueryFile);
     }
 }
 

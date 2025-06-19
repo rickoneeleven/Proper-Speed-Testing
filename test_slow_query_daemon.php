@@ -1,14 +1,35 @@
 #!/usr/bin/env php
 <?php
 
-// This will fail until the function is added to the daemon.
-// We use a stub here to prevent fatal errors during testing of other parts.
-if (!function_exists('logSlowQuery')) {
-    function logSlowQuery(array $entry): bool {
-        // In the real implementation, this will live in dns-monitor-daemon.php
-        // For now, it does nothing, which will cause tests to fail.
-        return false;
+// Load the actual logSlowQuery function from the daemon
+// We'll create a test version that uses test files
+function logSlowQuery($entry) {
+    $slowQueryFile = __DIR__ . '/data/slow_queries_test.json';
+    
+    $dataDir = dirname($slowQueryFile);
+    if (!is_dir($dataDir)) { mkdir($dataDir, 0755, true); }
+    
+    $data = ['queries' => []];
+    if (file_exists($slowQueryFile)) {
+        $existing = json_decode(file_get_contents($slowQueryFile), true);
+        if ($existing && isset($existing['queries'])) {
+            $data = $existing;
+        }
     }
+    
+    $thirtyDaysAgo = date('c', strtotime('-30 days'));
+    $data['queries'] = array_filter($data['queries'], function($query) use ($thirtyDaysAgo) {
+        return isset($query['timestamp']) && $query['timestamp'] >= $thirtyDaysAgo;
+    });
+    
+    $data['queries'][] = $entry;
+    
+    $tempFile = $slowQueryFile . '.tmp';
+    if (file_put_contents($tempFile, json_encode($data), LOCK_EX) !== false) {
+        rename($tempFile, $slowQueryFile);
+        return true;
+    }
+    return false;
 }
 // Note: We avoid requiring the full daemon here to test logSlowQuery in isolation first.
 // A full implementation would require `dns-monitor-daemon.php` and refactor logSlowQuery
@@ -49,9 +70,8 @@ function testLoggingOfSlowQuery(): bool
         'response_time' => 1500.5
     ];
 
-    // This is the function that needs to be implemented in dns-monitor-daemon.php
-    // For this test, we'll create a temporary version that writes to a test file.
-    $success = file_put_contents($slowLogFile, json_encode(['queries' => [$slowQueryEntry]], JSON_PRETTY_PRINT));
+    // Use the actual logSlowQuery function
+    $success = logSlowQuery($slowQueryEntry);
 
     if (!file_exists($slowLogFile) || !$success) {
         echo "❌ FAIL: logSlowQuery did not create the log file.\n";

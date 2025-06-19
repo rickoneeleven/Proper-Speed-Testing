@@ -19,14 +19,29 @@ log_message() {
 
 # Function to check if daemon is running
 is_daemon_running() {
+    local heartbeat_file="$DATA_DIR/dns-heartbeat.lock"
+    
+    # Check if heartbeat file exists
+    if [ -f "$heartbeat_file" ]; then
+        # Check if file was modified in last 5 minutes (300 seconds)
+        local file_age=$(( $(date +%s) - $(stat -c %Y "$heartbeat_file" 2>/dev/null || echo 0) ))
+        if [ "$file_age" -lt 300 ]; then
+            log_message "DNS daemon is active (heartbeat file age: ${file_age}s)"
+            return 0  # Running
+        else
+            log_message "Heartbeat file is stale (age: ${file_age}s), daemon may be dead"
+            rm -f "$heartbeat_file"
+            return 1  # Not running
+        fi
+    fi
+    
+    # Fallback: check PID file method
     if [ -f "$PID_FILE" ]; then
         local pid=$(cat "$PID_FILE" 2>/dev/null)
         if [ -n "$pid" ] && [ "$pid" -gt 0 ]; then
-            # Check if process is actually running
             if kill -0 "$pid" 2>/dev/null; then
                 return 0  # Running
             else
-                # Stale PID file
                 rm -f "$PID_FILE"
                 return 1  # Not running
             fi

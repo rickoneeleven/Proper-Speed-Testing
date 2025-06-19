@@ -164,7 +164,11 @@ function measureDnsLookupDig($server, $domain, $cacheBust = true) {
 
 // Test DNS servers
 function performDnsTests($servers, $domains) {
-    global $tempFile, $dataFile;
+    global $tempFile, $dataFile, $baseDir;
+    
+    // HEARTBEAT: Touch lock file to show daemon is active
+    $heartbeatFile = $baseDir . '/data/dns-heartbeat.lock';
+    touch($heartbeatFile);
     
     // Clear temp file
     file_put_contents($tempFile, '');
@@ -254,6 +258,7 @@ function performDnsTests($servers, $domains) {
     checkAndTruncateJson();
 }
 
+
 // Main daemon function
 function runDaemon() {
     global $running, $config, $forceTest, $pidFile;
@@ -300,9 +305,7 @@ function runDaemon() {
     }
     
     // Cleanup
-    if (file_exists($pidFile)) {
-        unlink($pidFile);
-    }
+    cleanup();
     
     logMessage("DNS monitoring daemon stopped");
 }
@@ -311,6 +314,7 @@ function runDaemon() {
 function cleanup() {
     global $pidFile;
     
+    // Clean up PID file
     if (file_exists($pidFile)) {
         unlink($pidFile);
     }
@@ -319,55 +323,11 @@ function cleanup() {
 // Register cleanup function
 register_shutdown_function('cleanup');
 
-// Improved PID file handling with race condition protection
-function acquireLock($pidFile) {
-    $maxAttempts = 3;
-    $attempt = 0;
-    
-    while ($attempt < $maxAttempts) {
-        // Check if PID file exists and contains valid PID
-        if (file_exists($pidFile)) {
-            $pid = (int)trim(file_get_contents($pidFile));
-            if ($pid > 0 && posix_kill($pid, 0)) {
-                logMessage("DNS daemon already running with PID $pid");
-                return false;
-            } else {
-                // Remove stale PID file
-                unlink($pidFile);
-            }
-        }
-        
-        // Attempt atomic PID file creation
-        $myPid = getmypid();
-        if (file_put_contents($pidFile, $myPid, LOCK_EX) !== false) {
-            // Verify we actually wrote our PID (race condition check)
-            usleep(100000); // 100ms delay
-            if (file_exists($pidFile)) {
-                $writtenPid = (int)trim(file_get_contents($pidFile));
-                if ($writtenPid === $myPid) {
-                    return true; // Successfully acquired lock
-                } else {
-                    logMessage("Race condition detected, another process won (PID $writtenPid)");
-                    return false;
-                }
-            } else {
-                logMessage("PID file disappeared after writing");
-                return false;
-            }
-        }
-        
-        $attempt++;
-        if ($attempt < $maxAttempts) {
-            usleep(500000); // 500ms delay before retry
-        }
-    }
-    
-    logMessage("Failed to acquire PID file lock after $maxAttempts attempts");
-    return false;
-}
 
-// Check if we can acquire the daemon lock
-if (!acquireLock($pidFile)) {
+// Create PID file at startup
+$myPid = getmypid();
+if (file_put_contents($pidFile, $myPid) === false) {
+    logMessage("ERROR: Failed to create PID file");
     exit(1);
 }
 

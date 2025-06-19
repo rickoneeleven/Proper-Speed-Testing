@@ -93,7 +93,14 @@ function sendSignalToDaemon($signal = 'SIGUSR1') {
             // Check if process is running
             if (posix_kill($pid, 0)) {
                 // Send signal to reload config - map signal name to number
-                $signalNum = ($signal === 'SIGUSR1') ? 10 : 15; // SIGUSR1=10, SIGTERM=15
+                $signalNum = 10; // Default to SIGUSR1=10
+                if ($signal === 'SIGUSR1') {
+                    $signalNum = 10;
+                } elseif ($signal === 'SIGUSR2') {
+                    $signalNum = 12;
+                } elseif ($signal === 'SIGTERM') {
+                    $signalNum = 15;
+                }
                 posix_kill($pid, $signalNum);
                 return true;
             } else {

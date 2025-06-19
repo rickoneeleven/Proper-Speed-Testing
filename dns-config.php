@@ -147,7 +147,21 @@ function outputJson($data) {
 }
 
 function logError($message) {
-    file_put_contents(__DIR__ . '/data/api-error.log', date('Y-m-d H:i:s') . ' - ' . $message . "\n", FILE_APPEND);
+    $logFile = __DIR__ . '/data/api-error.log';
+    
+    // Check if log file needs truncation (1MB limit)
+    if (file_exists($logFile) && filesize($logFile) > 1024 * 1024) {
+        $lines = file($logFile);
+        $totalLines = count($lines);
+        $targetSize = 900 * 1024; // 900KB
+        $currentSize = filesize($logFile);
+        $keepRatio = $targetSize / $currentSize;
+        $linesToKeep = max(100, (int)($totalLines * $keepRatio));
+        $newContent = implode('', array_slice($lines, -$linesToKeep));
+        file_put_contents($logFile, $newContent, LOCK_EX);
+    }
+    
+    file_put_contents($logFile, date('Y-m-d H:i:s') . ' - ' . $message . "\n", FILE_APPEND);
 }
 
 // Get JSON input for POST requests

@@ -55,7 +55,27 @@ function logMessage(string $message): void {
     global $logFile;
     $timestamp = date('Y-m-d H:i:s');
     $logEntry = "[$timestamp] $message\n";
+    
+    // Check if log file needs truncation (1MB limit)
+    checkAndTruncateLog($logFile, 1024 * 1024, 900 * 1024);
+    
     file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
+}
+
+function checkAndTruncateLog(string $file, int $maxSize, int $targetSize): void {
+    if (!file_exists($file) || filesize($file) <= $maxSize) { return; }
+    
+    $lines = file($file);
+    $totalLines = count($lines);
+    
+    // Calculate how many lines to keep based on target size
+    $currentSize = filesize($file);
+    $keepRatio = $targetSize / $currentSize;
+    $linesToKeep = max(100, (int)($totalLines * $keepRatio)); // Keep at least 100 lines
+    
+    // Keep the most recent lines
+    $newContent = implode('', array_slice($lines, -$linesToKeep));
+    file_put_contents($file, $newContent, LOCK_EX);
 }
 
 function loadConfig(): array {
@@ -162,15 +182,23 @@ function initializeDataFile(): void {
 
 function checkAndTruncateJson(): void {
     global $dataFile;
-    $maxSize = 10 * 1024 * 1024;
+    $maxSize = 10 * 1024 * 1024; // 10MB
+    $targetSize = 9 * 1024 * 1024; // 9MB
+    
     if (!file_exists($dataFile) || filesize($dataFile) <= $maxSize) { return; }
-    logMessage("JSON file exceeded 10MB, truncating...");
+    
+    logMessage("JSON file exceeded 10MB, truncating to 9MB...");
     $data = json_decode(file_get_contents($dataFile), true);
     if ($data && isset($data['tests'])) {
-        $data['tests'] = array_slice($data['tests'], -1000);
+        // Calculate how many entries to keep to reach target size
+        $currentSize = filesize($dataFile);
+        $reductionRatio = $targetSize / $currentSize;
+        $entriesToKeep = max(1000, (int)(count($data['tests']) * $reductionRatio));
+        
+        $data['tests'] = array_slice($data['tests'], -$entriesToKeep);
         $data['metadata']['last_updated'] = date('c');
         file_put_contents($dataFile, json_encode($data), LOCK_EX);
-        logMessage("File truncated to keep last 1000 entries.");
+        logMessage("File truncated to " . number_format(filesize($dataFile)) . " bytes, keeping " . $entriesToKeep . " entries.");
     }
 }
 

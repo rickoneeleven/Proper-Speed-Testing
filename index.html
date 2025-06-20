@@ -472,7 +472,7 @@
         <div class="dns-monitoring" id="dnsMonitoring">
             <div class="dns-header">
                 <h3>
-                    🌐 DNS Server Monitoring
+                    <span id="dnsMonitoringTitle">🌐 DNS Server Monitoring</span>
                     <span class="dns-status-indicator" id="dnsStatusIndicator"></span>
                 </h3>
                 <div class="dns-actions">
@@ -522,7 +522,7 @@
         <div class="dns-monitoring" id="slowQuerySection">
             <div class="dns-header">
                 <h3>
-                    🐌 Slow Query Report
+                    🐌 Slow Query Report - last 24 hours
                 </h3>
             </div>
             
@@ -1121,6 +1121,7 @@
                         updateDnsStatusIndicator(data.daemon);
                         updateDnsStats(data.stats);
                         updateDnsLastUpdate(data.last_update);
+                        updateDnsTitle(data.reset_date);
                     }
                 })
                 .catch(error => {
@@ -1154,9 +1155,21 @@
             emptyState.style.display = 'none';
             table.style.display = 'table';
             
-            tableBody.innerHTML = dnsServers.map(server => {
+            // Create array of servers with their stats for sorting
+            const serverData = dnsServers.map(server => {
                 const stat = stats[server] || { average: 'N/A', count: 0, last_run: 'N/A' };
-                
+                return { server, stat };
+            });
+            
+            // Sort by average response time (ascending - fastest first)
+            serverData.sort((a, b) => {
+                // Handle N/A values - put them at the end
+                if (a.stat.average === 'N/A') return 1;
+                if (b.stat.average === 'N/A') return -1;
+                return a.stat.average - b.stat.average;
+            });
+            
+            tableBody.innerHTML = serverData.map(({ server, stat }) => {
                 let diff = 'N/A';
                 let diffClass = '';
                 
@@ -1192,6 +1205,22 @@
                 element.textContent = `Last update: ${updateTime.toLocaleString()}`;
             } else {
                 element.textContent = 'Last update: Never';
+            }
+        }
+        
+        function updateDnsTitle(resetDate) {
+            const titleElement = document.getElementById('dnsMonitoringTitle');
+            
+            if (resetDate) {
+                const date = new Date(resetDate);
+                const formattedDate = date.toLocaleDateString('en-GB', { 
+                    day: '2-digit', 
+                    month: 'short', 
+                    year: 'numeric'
+                });
+                titleElement.textContent = `🌐 DNS Server Monitoring - last reset: ${formattedDate}`;
+            } else {
+                titleElement.textContent = '🌐 DNS Server Monitoring';
             }
         }
         

@@ -206,10 +206,10 @@ function logSlowQuery(array $entry): void {
         }
     }
     
-    // Remove entries older than 30 days
-    $thirtyDaysAgo = date('c', strtotime('-30 days'));
-    $data['queries'] = array_filter($data['queries'], function($query) use ($thirtyDaysAgo) {
-        return isset($query['timestamp']) && $query['timestamp'] >= $thirtyDaysAgo;
+    // Remove entries older than 24 hours
+    $twentyFourHoursAgo = date('c', strtotime('-24 hours'));
+    $data['queries'] = array_filter($data['queries'], function($query) use ($twentyFourHoursAgo) {
+        return isset($query['timestamp']) && $query['timestamp'] >= $twentyFourHoursAgo;
     });
     
     // Add new entry

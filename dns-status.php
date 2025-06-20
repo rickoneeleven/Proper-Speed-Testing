@@ -149,6 +149,23 @@ function getDnsStats() {
     return $stats;
 }
 
+function getResetDate() {
+    global $dataFile;
+    
+    if (!file_exists($dataFile)) {
+        return null;
+    }
+    
+    $data = json_decode(file_get_contents($dataFile), true);
+    if (!$data || !isset($data['tests']) || empty($data['tests'])) {
+        return null;
+    }
+    
+    // Get the timestamp of the first test as reset date
+    $firstTest = reset($data['tests']);
+    return isset($firstTest['timestamp']) ? $firstTest['timestamp'] : null;
+}
+
 function getRecentLogEntries($limit = 10) {
     global $logFile;
     
@@ -170,6 +187,7 @@ try {
     $lastUpdate = getLastUpdateTime();
     $dnsStats = getDnsStats();
     $recentLogs = getRecentLogEntries();
+    $resetDate = getResetDate();
     
     $response = [
         'success' => true,
@@ -177,6 +195,7 @@ try {
         'last_update' => $lastUpdate,
         'stats' => $dnsStats,
         'recent_logs' => $recentLogs,
+        'reset_date' => $resetDate,
         'timestamp' => date('c')
     ];
     

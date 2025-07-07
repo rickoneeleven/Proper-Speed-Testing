@@ -1,0 +1,44 @@
+# Deny access to .git directory and files
+<Files ~ "^\.git">
+    Require all denied
+</Files>
+
+# Alternative method - deny access to version control directories
+RedirectMatch 404 /\.git
+RedirectMatch 404 /\.svn
+RedirectMatch 404 /\.hg
+
+# Deny access to sensitive files
+<Files ~ "^\.">
+    Require all denied
+</Files>
+
+# Deny access to backup and temporary files
+<Files ~ "~$">
+    Require all denied
+</Files>
+
+# Deny access to configuration files
+<Files ~ "\.(env|ini|log|conf)$">
+    Require all denied
+</Files>
+
+# Deny access to development and documentation files
+<Files ~ "^(CLAUDE\.md|README\.md|\.gitignore)$">
+    Require all denied
+</Files>
+
+# Deny access to sensitive JSON files but allow results.json
+<Files ~ "\.json$">
+    Require all denied
+</Files>
+
+# Allow access to results.json for the web interface
+<Files "results.json">
+    Require all granted
+</Files>
+
+# Deny access to shell scripts
+<Files ~ "\.sh$">
+    Require all denied
+</Files>
